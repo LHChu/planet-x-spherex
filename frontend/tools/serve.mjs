@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { epochsFixture } from './epochs-fixture.mjs';
+import { createStaticServer, projectPath } from './static-site.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const repo = path.resolve(root, '..');
 const fixture = process.argv.includes('--fixture');
@@ -15,18 +16,8 @@ const wcsData = wcsFixture ? JSON.parse(execFileSync(python, [path.join(root, 't
 const scenario = process.argv.find(arg => arg.startsWith('--scenario='))?.split('=')[1] || 'failed';
 const port = Number(process.argv.find(arg => arg.startsWith('--port='))?.split('=')[1] || 5500);
 const fixturePort = Number(process.argv.find(arg => arg.startsWith('--fixture-port='))?.split('=')[1] || 8001);
-const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png' };
-const staticServer = http.createServer(async (req, res) => {
-  try {
-    const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
-    // Also support a project-style prefix to check GitHub Pages relative paths.
-    const relative = pathname.replace(/^\/planet-x\//, '/').replace(/^\//, '') || 'index.html';
-    const target = path.resolve(root, relative);
-    if (!target.startsWith(root) || !['.html', '.css', '.js'].includes(path.extname(target))) { res.writeHead(404).end(); return; }
-    res.writeHead(200, { 'Content-Type': types[path.extname(target)] }); res.end(await readFile(target));
-  } catch { res.writeHead(404).end(); }
-});
-staticServer.listen(port, '127.0.0.1', () => console.log(`Frontend: http://127.0.0.1:${port}/planet-x/`));
+const staticServer = createStaticServer(root);
+staticServer.listen(port, '127.0.0.1', () => console.log(`Frontend: http://127.0.0.1:${port}${projectPath}`));
 let api;
 if (fixture || multiFixture) {
   api = http.createServer(async (req, res) => {

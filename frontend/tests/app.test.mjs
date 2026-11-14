@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { axesFixture } from './axes-fixture.mjs';
 const script = readFileSync(new URL('../app.js', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-function setup({ host = '127.0.0.1', stored = null, response, imageFail = false, fetchFail = false, storageFail = false, hang = false } = {}) {
+function setup({ host = '127.0.0.1', protocol = host === '127.0.0.1' ? 'http:' : 'https:', stored = null, response, imageFail = false, fetchFail = false, storageFail = false, hang = false } = {}) {
   const elements = {};
   class Element {
     constructor() { this.value = ''; this.hidden = false; this.disabled = false; this.dataset = {}; this.style = {}; this.attrs = {}; this.children = []; this.events = {}; this.naturalWidth = 29; this.naturalHeight = 29; this.classList = { toggle() {}, remove() {} }; }
@@ -23,11 +23,12 @@ function setup({ host = '127.0.0.1', stored = null, response, imageFail = false,
   const calls = [], timers = new Map(); let timerId = 0;
   const environment = {
     document: { getElementById: id => { assert.ok(elements[id], `Missing HTML ID ${id}`); return elements[id]; }, createElement: () => new Element() },
-    location: { hostname: host, protocol: host === '127.0.0.1' ? 'http:' : 'https:' }, window: {}, URL, AbortController, TypeError,
+    location: { hostname: host, protocol }, window: {}, URL, AbortController, TypeError,
     localStorage: { getItem: () => { if (storageFail) throw Error(); return stored; }, setItem() {} },
     setTimeout: (fn, ms) => { timers.set(++timerId, { fn, ms }); return timerId; }, clearTimeout: id => timers.delete(id),
     fetch: async (...args) => { calls.push(args); if (hang) return new Promise((resolve, reject) => args[1].signal.addEventListener('abort', () => { const error = new Error(); error.name = 'AbortError'; reject(error); })); if (fetchFail) throw new TypeError('network'); return response || success(); }
   };
+  vm.runInNewContext(readFileSync(new URL('../config.js', import.meta.url), 'utf8'), environment);
   vm.runInNewContext(readFileSync(new URL('../brightness.js', import.meta.url), 'utf8'), environment);
   vm.runInNewContext(readFileSync(new URL('../wcs-axes.js', import.meta.url), 'utf8'), environment);
   vm.runInNewContext(readFileSync(new URL('../color-bar.js', import.meta.url), 'utf8'), environment);
@@ -178,7 +179,23 @@ for (const [code, message] of [['detector_not_found', 'No D6 candidates in the c
     assert.equal(s.e.status.dataset.state, 'error'); assert.equal(s.e.preview.hidden, true);
   });
 }
-test('public page defaults to Render and blocks loopback', async () => { const s = setup({ host: 'example.github.io', stored: JSON.stringify({ environment: 'local' }) }); assert.equal(s.e.environment.value, 'render'); await s.submit(); assert.equal(s.calls.length, 0); s.e['api-url'].value = 'http://localhost:8000'; await s.submit(); assert.match(s.e.status.textContent, /public frontend/); });
+test('public page defaults to production Render, rebases PNG to HTTPS and blocks loopback', async () => {
+  const s = setup({ host: 'zo4j433.github.io', stored: JSON.stringify({ environment: 'local' }) });
+  assert.equal(s.e.environment.value, 'render');
+  assert.equal(s.e['api-url'].value, 'https://planet-x-spherex.onrender.com');
+  await s.submit();
+  assert.equal(s.calls[0][0], 'https://planet-x-spherex.onrender.com/api/preview');
+  assert.match(s.e.preview.url, /^https:\/\/planet-x-spherex.onrender.com\/api\/images\//);
+  s.e['api-url'].value = 'http://localhost:8000'; await s.submit();
+  assert.equal(s.calls.length, 1); assert.match(s.e.status.textContent, /public frontend/);
+});
+
+test('HTTPS rejects a saved HTTP API before fetch, including on local pages', async () => {
+  for (const host of ['zo4j433.github.io', '127.0.0.1']) {
+    const s = setup({ host, protocol: 'https:', stored: JSON.stringify({ environment: host === '127.0.0.1' ? 'local' : 'render', bases: { render: 'http://old.onrender.com', local: 'http://127.0.0.1:8000' } }) });
+    await s.submit(); assert.equal(s.calls.length, 0); assert.match(s.e.status.textContent, /HTTPS/);
+  }
+});
 test('Render HTTPS, URL validation and environment persistence', async () => {
   const s = setup(); s.e.environment.value = 'render'; s.e.environment.events.change();
   for (const url of ['http://foo.onrender.com', 'https://foo.onrender.com/path', 'https://user:password@foo.onrender.com', 'not a url']) { s.e['api-url'].value = url; await s.submit(); assert.equal(s.calls.length, 0); }

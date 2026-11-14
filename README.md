@@ -138,25 +138,29 @@ node frontend/tools/serve.mjs --fixture
 
 介面區分查詢中、查無影像、API 錯誤、網路／CORS 錯誤與圖片載入失敗。查詢期間禁止重複提交。180 秒等待期限只中止前端等待，後端可能仍在執行；不自動重試。`busy` 會顯示 `Retry-After`，請依提示稍後手動重試。PNG 載入期限為 30 秒。圖片可能因快取到期、容量淘汰或後端重啟失效，需重新搜尋。
 
-## GitHub Pages 部署準備（尚未部署）
+## GitHub Pages 部署準備（Phase 5.2，尚未部署）
 
-`frontend/index.html`、`styles.css`、`config.js`、`app.js` 即為完整靜態網站；CSS／JS／首頁連結均使用相對路徑，支援 `/REPOSITORY/` 子路徑，不需要 React 或建置程序。
+操作與驗收方式見 [frontend/DEPLOYMENT.md](frontend/DEPLOYMENT.md)。`.github/workflows/deploy-pages.yml` 在 `main` 更新或手動執行時，先離線驗證，再發布 `frontend/dist/`；本輪未執行部署。
 
-日後部署時，把 `frontend/` **內容**作為 Pages artifact 根目錄；`tools/`、`tests/` 及測試報告不需上傳。沒有新增自動部署 workflow，避免推送時意外部署。
+`node frontend/tools/build-pages.mjs` 僅打包首頁、CSS 與六個 JS 檔案，排除後端、研究資料、測試、fixture 及工具。資源採相對路徑，支援 `/planet-x-spherex/`。
 
-1. 先有可用的 Render FastAPI HTTPS 服務，沿用單一 worker。
-2. 可在 `frontend/config.js` 的 `renderApiBase` 填入真實 Render origin，例如 `https://YOUR-SERVICE.onrender.com`；也可保持空白，由訪客自行設定。不要填入密鑰。
-3. 在 Render **環境變數**設定既有 `CORS_ORIGINS`，例如 `http://127.0.0.1:5500,http://localhost:5500,https://YOUR_ACCOUNT.github.io`。GitHub Pages origin 不含 repository 路徑或尾端斜線。此步只需設定環境，不需修改後端程式。
-4. 先在本機前端選 Render 做成功／失敗串接驗證，再另行部署 Pages。
+1. Render API 已公開於 `https://planet-x-spherex.onrender.com`，正式前端預設此 HTTPS origin；本機首次開啟仍預設 `http://127.0.0.1:8000`。
+2. Render 的 `CORS_ORIGINS` 必須包含 `https://zo4j433.github.io`，不含 repository 路徑或尾端斜線；本輪實際 OPTIONS 預檢已通過。
+3. GitHub repository 的 **Settings → Pages → Build and deployment → Source** 選 **GitHub Actions**，並限制 `github-pages` environment 僅允許 `main`。
+4. 完成檢閱後由維護者自行 Commit／Push；推送到 `main` 會發布。手動重部署請在 Actions 選擇此 workflow，使用 `main` 執行。
 
 GitHub Pages 只提供前端靜態檔案，不能執行 FastAPI，也不會把網站的 localhost 連線轉送至專案開發者電腦。每位使用者需連線到公開可用的 Render API。
+
+## Render 後端部署準備（Phase 5.1）
+
+部署設定、環境變數、免費方案限制與操作步驟見 [backend/DEPLOYMENT.md](backend/DEPLOYMENT.md)；本機離線驗證結果見 [backend/phase5-1-report.md](backend/phase5-1-report.md)。Render API 已公開部署，`/docs` 已由使用者在瀏覽器驗證。
 
 ## 前端驗證
 
 需要 Node.js 18+，不需 `npm install`：
 
 ```powershell
-node --test frontend/tests/app.test.mjs
+node frontend/tools/test.mjs
 node --check frontend/app.js
 node --check frontend/tools/serve.mjs
 ```
