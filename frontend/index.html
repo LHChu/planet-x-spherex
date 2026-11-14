@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="以天球座標探索 NASA SPHEREx 紅外線觀測影像。">
+  <title>Planet X · SPHEREx Explorer</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script src="./config.js" defer></script>
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <header><a class="brand" href="./">PLANET X <span>/ SPHEREx</span></a><span class="badge">NASA SPACE APPS · PHASE 03</span></header>
+  <main>
+    <section class="intro"><p class="eyebrow">INFRARED SKY EXPLORER</p><h1>從一個座標，<br>看見紅外線宇宙。</h1><p>探索 NASA SPHEREx 觀測資料，檢視天空中的微小光點。</p></section>
+    <div class="workspace">
+      <aside class="panel">
+        <h2><span class="step">01</span> 指定觀測位置</h2>
+        <form id="search-form">
+          <label for="ra">赤經 RA <small>十進位度數 · 0 ≤ RA &lt; 360</small></label>
+          <input id="ra" name="ra" type="number" step="any" min="0" max="359.99999999999994" value="127.69444" required>
+          <label for="dec">赤緯 Dec <small>十進位度數 · −90 至 90</small></label>
+          <input id="dec" name="dec" type="number" step="any" min="-90" max="90" value="-39.17760" required>
+          <label for="radius">搜尋半徑 <small>度 · 大於 0，最大 0.08333333333333333</small></label>
+          <input id="radius" name="radius" type="number" step="any" min="0.000000000000001" max="0.08333333333333333" value="0.01" required>
+          <p class="hint">半徑僅影響搜尋範圍。Cutout 固定邊長為 3 arcmin，像素尺寸依 NASA 回傳為準。</p>
+          <button id="search" class="primary" type="submit">搜尋 NASA 影像 <span aria-hidden="true">↗</span></button>
+        </form>
+        <details class="connection" open>
+          <summary>API 連線設定</summary>
+          <label for="environment">後端環境</label>
+          <select id="environment"><option value="local">本機 localhost</option><option value="render">Render HTTPS</option></select>
+          <label for="api-url">API 基底網址</label>
+          <input id="api-url" type="url" spellcheck="false" placeholder="https://your-service.onrender.com" aria-describedby="connection-note">
+          <p id="connection-note" class="hint">設定會保存在此瀏覽器。GitHub Pages 請使用 Render HTTPS；本機測試請先啟動 FastAPI。</p>
+        </details>
+      </aside>
+      <section class="panel viewer" aria-labelledby="viewer-title">
+        <div class="viewer-header"><h2 id="viewer-title"><span class="step">02</span> 觀測影像</h2><span id="image-size" class="mono">PNG · —</span></div>
+        <div class="toolbar">
+          <div class="modes" role="group" aria-label="影像顯示模式"><button id="black" type="button" aria-pressed="true" disabled>黑底白光</button><button id="white" type="button" aria-pressed="false" disabled>白底黑光</button></div>
+          <label class="zoom-label" for="zoom">縮放 <output id="zoom-value" for="zoom">12×</output></label><input id="zoom" type="range" min="1" max="32" value="12" disabled>
+        </div>
+        <p id="status" role="status" aria-live="polite" data-state="idle">輸入座標，開始探索。</p>
+        <div id="viewport" class="viewport" tabindex="0" role="region" aria-label="可捲動的影像檢視區">
+          <div id="placeholder"><span class="crosshair" aria-hidden="true">⊕</span><p>等待觀測資料</p><small>NASA / IRSA · SPHEREx</small></div>
+          <img id="preview" alt="" hidden>
+        </div>
+        <p class="hint viewer-note">以原始像素放大顯示；放大不會增加影像細節。超出範圍時可捲動檢視。</p>
+        <div id="info" hidden><h3>觀測資訊</h3><dl id="metadata"></dl><details><summary>完整 API metadata</summary><pre id="raw-metadata"></pre></details></div>
+      </section>
+    </div>
+    <footer>資料來源 NASA / IRSA SPHEREx <span>單張影像預覽 · Phase 3</span></footer>
+  </main>
+</body>
+</html>

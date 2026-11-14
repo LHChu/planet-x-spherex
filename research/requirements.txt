@@ -1,0 +1,4 @@
+astropy>=6.0,<7.0
+numpy>=1.23,<2.1
+Pillow>=10,<12
+psutil>=5.9,<8
