@@ -54,7 +54,21 @@ py -3.11 -m venv research/.venv
 .\research\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --workers 1
 ```
 
-看到 Uvicorn 顯示 `http://127.0.0.1:8000` 後，保持此 Terminal 執行中。可在瀏覽器開啟 http://127.0.0.1:8000/health，應看到 `{"status":"ok"}`；互動式 API 文件位於 http://127.0.0.1:8000/docs。健康檢查不會連線 NASA。
+
+看到 Uvicorn 顯示 `http://127.0.0.1:8000` 後，保持此 Terminal 執行中。
+
+可在瀏覽器開啟健康檢查頁面：
+
+[http://127.0.0.1:8000/health](http://127.0.0.1:8000/health)
+
+正常情況下應看到 `{"status":"ok"}`。
+
+互動式 API 文件：
+
+[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+注意：健康檢查不會連線 NASA。
+
 
 ### 4. 啟動前端（Terminal 2，port 5500）
 
@@ -66,9 +80,17 @@ node frontend/tools/serve.mjs
 
 前端不需要 `npm install`，直接使用 Node.js 內建模組。保持此 Terminal 執行中；前後端需同時運作。
 
+
 ### 5. 開啟頁面並測試影像查詢
 
-開啟 **http://127.0.0.1:5500/planet-x/**（保留最後的 `/`）。也支援根路徑 http://127.0.0.1:5500/。
+在瀏覽器開啟：
+
+**[http://127.0.0.1:5500/planet-x/](http://127.0.0.1:5500/planet-x/)**
+
+也支援根路徑：
+
+[http://127.0.0.1:5500/](http://127.0.0.1:5500/)
+
 
 在頁面的「API 連線設定」選「本機 localhost」，API 基底網址填 `http://127.0.0.1:8000`，使用以下已驗證範例後按「搜尋 NASA 影像」：
 
