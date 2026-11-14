@@ -70,7 +70,52 @@ DR1 只有空表才查 QR3，查詢上限仍為 50 筆；先按 `s_region` 的�
 
 若 Cutout 越界，日誌還會提供 `parent_window`：在 alternate A 座標及 SIA 原曝光尺寸齊全時，列出 Cutout 在原曝光的起點、目標原像素座標與是否接觸原曝光邊界。資料不足則標明不可判定，不推測 NASA 格式有誤。
 
-## CORS
+## Phase 4.3：多時期 metadata API
+
+`POST /api/epochs/search` 只向 IRSA SIA2 查詢 metadata，不下載 FITS、不產生影格或動畫。原有 `/api/preview` 請求及回應格式保持相容。
+
+請求例子（JSON）：
+
+```json
+{
+  "ra": 127.69444,
+  "dec": -39.17760,
+  "radius_deg": 0.01,
+  "collections": ["spherex_dr1", "spherex_qr3"],
+  "detectors": [1],
+  "time_range_mjd": [60790.0, 61190.0],
+  "limit": 100
+}
+```
+
+座標邊界與嚴格型別沿用 preview；額外欄位會被拒絕。`collections` 預設兩個 Wide collections，非空且不得重複，不接受 deep／cube／任意 collection。`detectors` 可省略或 null（全部），否則為不重複的整數 1～6 非空陣列。`time_range_mjd` 可省略或 null，否則為兩個有限 JSON 數值 `[start,end]`、start ≤ end，UTC MJD 日，採曝光區間相交（含邊界）；有時間篩選時排除時間缺失／無效產品。`limit` 為每頁 **曝光** 數量，預設 100、範圍 1～200；同曝光所有產品一併回傳，不拆開 detector。
+
+每個所選 collection 都會查詢，不採 preview 的 DR1 非空即停止策略。每來源固定 `MAXREC=1000`、XML 最多 8 MiB，時間條件也傳至 SIA `TIME`；detector 於取得有界 snapshot 後篩選。因此 detector 篩選不保證消除上游截斷。沒有 OFFSET、無界分段補查或更多資料自動下載。
+
+成功 HTTP 200 回應包含：
+
+- `schema_version`、`search_id`、正規化 `query`、`queried_at`、`expires_at`、`time_scale=utc`。
+- `collections`：逐來源 `name`、`status=ok/partial/error`、`returned_rows`（失敗為 null）、`truncated`、`request_count`、`query_status`（解析成功時）、`error`。單一來源失敗仍回可用資料，`complete=false`；`OVERFLOW` 也一定揭露為 partial。全部失敗回 502 `upstream_error`，全部逾時回 504 `upstream_timeout`。正常空結果為 200、空陣列。
+- `counts`：整份篩選後 snapshot 的 `products`、`exposures`、`metadata_center_covered_exposures`，不隨頁面改變。
+- `epochs`：依 `obs_id` 分組，保留產品原始時間，曝光時間為組內最早開始／最晚結束；UTC 由 Astropy 換算，`time_source=sia`。缺少 obs_id 的產品各成獨立 unknown 曝光，不按相近時間合併。曝光依 `(start_mjd,epoch_id)` 排序，缺時間排最後。
+- `products`：同頁曝光的產品，依 `(t_min,obs_id,detector,product_id)` 排序。包含原始 MJD、detector、來源、publisher DID、產品類型、`em_min/em_max`（公尺）、來源 URL、處理版本／日期、footprint 預篩與 warnings。`product_id` 是來源 URL 的 SHA-256；同 URL 合併 `source_collections`。不同 URL／處理版本保守保留並提示，不自動判定鏡像或 supersession，`superseded_product_ids=[]`。
+- `pagination`：`unit=epochs`、`limit`、`next_cursor`；最後一頁為 null。續頁重送相同查詢條件，加上 cursor，limit 可調整；不再查 NASA。cursor 綁定 snapshot 與篩選條件且有簽章，無效／不匹配回 422 `invalid_cursor`；snapshot 到期／淘汰回 410 `search_expired`。重啟後舊 cursor 簽章失效，回 422，需重新搜尋。
+
+FITS 才能驗證的欄位保留未知：`date_obs=null`、pipeline 軟體版本 null、目標波長／bandwidth null、`target_wavelength_status=not_evaluated`、`wcs_verified=false`、`valid_fraction=null`、`frame_status=not_requested`、`image_url=null`。`coverage.center` 只表示 metadata polygon 的中心預篩（含目標／目標在外／未知），不保證整個視窗有效。v27 僅標記 `release_compatible_header_unverified`；未知版本為 `unknown_header_unverified`。同 detector 或 detector 波長範圍不能代表同目標位置波段。
+
+snapshot 快取為單 worker 記憶體、最多 32 份／8 MiB JSON 編碼資料量（不是程序 RSS 上限），FIFO 淘汰；完整非空結果 TTL 1 小時，完整空結果 5 分鐘，部分結果 60 秒。查詢鍵使用精確座標、半徑、正規化 filters，不包含 limit／cursor；同查詢與續頁命中零上游請求。超過單份快取容量回 503 `metadata_capacity`，請縮小範圍。到期時間不因讀取延長。
+
+新搜尋與 preview 共用既有工作鎖，忙碌回 503 `busy` 與 `Retry-After: 5`；快取讀取可繼續。metadata 沿用 120 秒總期限、20 秒 socket timeout、最多 16 次／每 URL 3 次及最多等待 15 秒政策，並加入 429、503 的退避與 Retry-After；同次搜尋切換來源不跳過 cooldown。跨請求／跨 endpoint 持久 cooldown 尚未實作，preview 原本的 retry 行為保持不變。
+
+離線測試（含新 API、既有 preview 回歸）：
+
+```powershell
+.\research\.venv\Scripts\python.exe -m unittest discover -s backend/tests -v
+```
+
+`test_epochs.py` 以合成 VOTable 覆蓋合併、分頁、篩選、嚴格輸入、OVERFLOW、來源失敗、快取、cursor、鎖及 429／503。另可選擇性回放本機 Phase 4.1 XML，核對 428 產品／217 曝光／215 個中心覆蓋曝光；沒有研究輸出時只跳過此回放，其餘測試獨立可跑。
+
+## CORS 設定
 
 啟動前可設定以逗號分隔的完整 origins，不能包含路徑或尾端斜線：
 

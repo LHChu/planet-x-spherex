@@ -18,6 +18,92 @@ from astropy.wcs.utils import skycoord_to_pixel
 from PIL import Image
 
 LIMIT = 32 * 1024 * 1024
+MAX_IMAGE_PIXELS = 262144  # Bound decompression/working arrays before reading IMAGE.
+MAX_CLIENT_PIXELS = 65536
+MAX_CLIENT_BYTES = 4 * 1024 * 1024
+# Conservative display exclusions; SOURCE and informational flags remain usable.
+BAD_FLAG_BITS = (1, 2, 6, 9, 15, 19)
+
+
+def target_spectral_coordinates(header, hdul, x, y):
+    """Alternate W is a raw-pixel lookup, with no celestial SIP correction."""
+    if "CTYPE1W" not in header:
+        return {"available": False, "reason": "No alternate W spectral WCS"}
+    spectral_header = header.copy()
+    for key in list(spectral_header):
+        if re.fullmatch(r"(?:A|B|AP|BP)_(?:ORDER|\d+_\d+)", key):
+            del spectral_header[key]
+    try:
+        wave = WCS(spectral_header, fobj=hdul, key="W")
+        values = [float(v) for v in wave.all_pix2world(x, y, 0)]
+        if not all(np.isfinite(values)):
+            raise ValueError("Non-finite spectral coordinates")
+        return {"available": True, "wavelength": values[0], "bandwidth": values[1],
+                "units": list(wave.world_axis_units)}
+    except (ValueError, KeyError, RuntimeError) as exc:
+        return {"available": False, "reason": str(exc)}
+
+
+def display_limits(values):
+    """Finite, quality-selected samples only. Never percentile an empty array."""
+    values = np.asarray(values, dtype=np.float64)
+    if values.size == 0 or not np.isfinite(values).all():
+        raise ValueError("IMAGE has no valid finite pixels for display")
+    minimum, maximum = float(values.min()), float(values.max())
+    lo, hi = np.percentile(values, [1, 99])
+    fallback = None
+    if hi <= lo:
+        lo, hi, fallback = minimum, maximum, "minmax"
+    if hi <= lo:
+        delta = max(abs(lo) * 1e-6, 1e-6)
+        lo, hi, fallback = lo - delta, hi + delta, "constant"
+    if not (np.isfinite(lo) and np.isfinite(hi) and hi > lo and np.isfinite(hi - lo)):
+        raise ValueError("IMAGE display range is not representable")
+    return float(lo), float(hi), minimum, maximum, fallback
+
+
+def stretch_pixels(data, valid, lo, hi, method="asinh"):
+    if method not in ("linear", "asinh"):
+        raise ValueError("Unknown display stretch")
+    if not (np.isfinite(lo) and np.isfinite(hi) and hi > lo and np.isfinite(hi - lo)):
+        raise ValueError("Display maximum must exceed minimum with a finite range")
+    # Work on a copy of valid values; no NaN conversion or FITS mutation.
+    normalized = (np.clip(data[valid].astype(np.float64), lo, hi) - lo) / (hi - lo)
+    if method == "asinh":
+        normalized = np.arcsinh(10 * normalized) / np.arcsinh(10)
+    pixels = np.zeros(data.shape, dtype=np.uint8)
+    pixels[valid] = np.rint(normalized * 255).astype(np.uint8)
+    return np.flipud(pixels)
+
+
+def display_payload(data, valid, flags, lo, hi, minimum, maximum, fallback, unit):
+    counts, edges = np.histogram(data[valid].astype(np.float64), bins=64,
+                                range=(minimum, maximum) if maximum > minimum else (lo, hi))
+    # SI prefixes are case-sensitive: mJy is not MJy. Do not silently rescale.
+    supported_unit = unit.replace(" ", "") == "MJy/sr"
+    payload = {"unit": "MJy/sr" if supported_unit else unit,
+               "source_bunit": unit, "shape": list(data.shape), "default_method": "linear",
+               "order": "FITS row-major; flip y for display", "lo": lo, "hi": hi,
+               "min": minimum, "max": maximum, "fallback": fallback,
+               "histogram": {"counts": counts.tolist(), "edges": edges.tolist()},
+               "quality_policy": {"excluded_bits": list(BAD_FLAG_BITS),
+                                  "flags_present": flags is not None},
+               "available": False}
+    if not supported_unit:
+        payload["reason"] = "IMAGE BUNIT is missing or unsupported; no MJy/sr controls"
+        return payload
+    if data.size > MAX_CLIENT_PIXELS:
+        payload["reason"] = "Client pixel limit exceeded; PNG preview remains available"
+        return payload
+    payload.update(available=True,
+                   values=[float(v) if np.isfinite(v) else None for v in data.ravel()],
+                   valid=valid.ravel().tolist(),
+                   flags=None if flags is None else flags.ravel().tolist())
+    if len(json.dumps(payload, allow_nan=False).encode("utf-8")) > MAX_CLIENT_BYTES:
+        for key in ("values", "valid", "flags"):
+            payload.pop(key)
+        payload.update(available=False, reason="Client byte limit exceeded; PNG preview remains available")
+    return payload
 
 
 class TargetOutsideImage(ValueError):
@@ -71,7 +157,12 @@ def clean(value):
     return value
 
 
-def query_images(ra, dec, radius_deg, output_dir, events, *, fetcher=None):
+def query_images(ra, dec, radius_deg, output_dir, events, *, fetcher=None, detector=None):
+    if detector is not None and (type(detector) is not int or not 1 <= detector <= 6):
+        raise ValueError("detector must be an integer from 1 to 6 or None")
+    if detector is not None:
+        return query_detector_images(ra, dec, radius_deg, output_dir, events,
+                                     fetcher=fetcher, detector=detector)
     download = fetch if fetcher is None else fetcher
     query_info = {}
     rows = []
@@ -102,6 +193,67 @@ def query_images(ra, dec, radius_deg, output_dir, events, *, fetcher=None):
     return rows, query_info
 
 
+def query_detector_images(ra, dec, radius_deg, output_dir, events, *, fetcher, detector):
+    """Bounded prefix expansion; an unresolved overflow is never an absence claim.
+
+    The API supplies its shared RequestBudget.fetch, including retries/deadline.
+    DR1 remains preferred; QR3 is searched if DR1 has no matching detector.
+    """
+    download = fetch if fetcher is None else fetcher
+    info = {"query_status": {}, "columns": {}, "detector_search": {
+        "requested": detector, "attempts": [], "incomplete_collections": [],
+        "truncated_collections": []}}
+    search = info["detector_search"]
+    for collection in ("spherex_dr1", "spherex_qr3"):
+        for maxrec in (50, 500, 2000):
+            params = {"COLLECTION": collection, "POS": f"CIRCLE {ra} {dec} {radius_deg}", "MAXREC": maxrec}
+            path = output_dir / f"{collection}-detector-{maxrec}.xml"
+            download("https://irsa.ipac.caltech.edu/SIA?" + urllib.parse.urlencode(params),
+                     path, 8 * 1024 * 1024, events)
+            votable = parse(str(path))
+            statuses = [{"value": item.value, "content": item.content}
+                        for resource in votable.resources for item in resource.infos
+                        if item.name == "QUERY_STATUS"]
+            if not statuses or any(s["value"] not in ("OK", "OVERFLOW") for s in statuses):
+                raise ValueError(f"Invalid SIA QUERY_STATUS: {statuses}")
+            info["query_status"][collection] = statuses
+            table = votable.get_first_table().to_table(use_names_over_ids=True)
+            info["columns"][collection] = [
+                {"name": c, "unit": str(table[c].unit), "description": table[c].description}
+                for c in table.colnames]
+            if "energy_bandpassname" not in table.colnames:
+                raise ValueError("SIA response lacks energy_bandpassname for detector selection")
+            matches = []
+            unknown = 0
+            for row in table:
+                data = {name: clean(row[name]) for name in table.colnames}
+                match = re.fullmatch(r"SPHEREx-D([1-6])(?:_.*)?", str(data["energy_bandpassname"]))
+                if match is None:
+                    unknown += 1
+                elif int(match.group(1)) == detector:
+                    data.update(detector=detector, detector_source="energy_bandpassname")
+                    matches.append(data)
+            truncated = any(s["value"] == "OVERFLOW" for s in statuses) or len(table) >= maxrec
+            search["attempts"].append({"collection": collection, "maxrec": maxrec,
+                                       "rows": len(table), "matched": len(matches),
+                                       "unknown_detector_rows": unknown, "truncated": truncated})
+            if matches:
+                # The selected prefix can be used, while completeness stays explicit.
+                if truncated or unknown:
+                    search["incomplete_collections"].append(collection)
+                if truncated:
+                    search["truncated_collections"].append(collection)
+                return matches, info
+            if not truncated:
+                if unknown:
+                    search["incomplete_collections"].append(collection)
+                break
+            if maxrec == 2000:
+                search["incomplete_collections"].append(collection)
+                search["truncated_collections"].append(collection)
+    return [], info
+
+
 def build_cutout_url(row, ra, dec, cutout_size="3arcmin"):
     url = str(row["access_url"])
     parts = urllib.parse.urlsplit(url)
@@ -129,12 +281,28 @@ def render_cutout(path, row, ra, dec, radius_deg, output_dir, cutout_url, cutout
                              "axes": [header.get(f"{prefix}{i}") for i in range(1, n + 1)],
                              "bitpix": header.get("ZBITPIX", header.get("BITPIX")),
                              "header": header.tostring(sep="\n", endcard=True, padding=False)})
+        image_header = hdul["IMAGE"].header
+        if (image_header.get("NAXIS") != 2 or
+                int(image_header.get("NAXIS1", 0)) * int(image_header.get("NAXIS2", 0)) > MAX_IMAGE_PIXELS):
+            raise ValueError("IMAGE dimensions exceed display working-memory limit")
         data = hdul["IMAGE"].data
         if data is None or data.ndim != 2:
             raise ValueError("IMAGE is not a 2D array")
         valid = np.isfinite(data)
         if not valid.any():
             raise ValueError("IMAGE has no finite pixels")
+        finite_count = int(valid.sum())
+        flags = None
+        if "FLAGS" in hdul:
+            flag_header = hdul["FLAGS"].header
+            if (flag_header.get("NAXIS1"), flag_header.get("NAXIS2")) != (data.shape[1], data.shape[0]):
+                raise ValueError("FLAGS dimensions do not match IMAGE")
+            flags = hdul["FLAGS"].data
+            if flags is None or flags.shape != data.shape or flags.dtype.kind not in "iu":
+                raise ValueError("FLAGS must be an integer array matching IMAGE")
+            valid &= (flags & sum(1 << bit for bit in BAD_FLAG_BITS)) == 0
+        if not valid.any():
+            raise ValueError("IMAGE has no valid pixels after quality masking")
         # Use IMAGE's primary celestial WCS, including SIP distortion. Alternate
         # A is detector coordinates and W is wavelength, neither is RA/Dec.
         header = hdul["IMAGE"].header
@@ -159,21 +327,26 @@ def render_cutout(path, row, ra, dec, radius_deg, output_dir, cutout_url, cutout
                 f"CRVAL=({header.get('CRVAL1')},{header.get('CRVAL2')}), "
                 f"parent_window={cutout_edge_diagnostic(header, row, data.shape, x, y)}")
         ix, iy = int(np.floor(x + 0.5)), int(np.floor(y + 0.5))
-        if not valid[iy, ix]:
+        if not np.isfinite(data[iy, ix]):
             raise ValueError("Target pixel is not finite")
-        lo, hi = np.percentile(data[valid], [1, 99])
-        if hi <= lo:
-            raise ValueError("IMAGE has no display contrast")
-        normalized = np.nan_to_num((data.astype(np.float32) - lo) / (hi - lo), nan=0, posinf=1, neginf=0)
-        normalized = np.arcsinh(10 * np.clip(normalized, 0, 1)) / np.arcsinh(10)
-        pixels = np.flipud(np.rint(normalized * 255).astype(np.uint8))
-        Image.fromarray(pixels).save(output_dir / "black-background.png")
-        Image.fromarray(255 - pixels).save(output_dir / "white-background.png")
+        lo, hi, minimum, maximum, fallback = display_limits(data[valid])
+        pixels = stretch_pixels(data, valid, lo, hi)
+        for name, gray in (("black", pixels), ("white", 255 - pixels)):
+            image = Image.fromarray(gray)
+            if not valid.all():
+                image.putalpha(Image.fromarray(np.flipud(valid.astype(np.uint8) * 255)))
+            image.save(output_dir / f"{name}-background.png")
         metadata = {"query": {"ra": ra, "dec": dec, "radius_deg": radius_deg},
                     "cutout_size": cutout_size, "cutout_url": cutout_url,
                     "sia": row, "detector": hdul["IMAGE"].header.get("DETECTOR"),
                     "version": hdul[0].header.get("VERSION"), "hdu": hdu_info,
-                    "shape": list(data.shape), "finite_pixels": int(valid.sum()),
+                    "shape": list(data.shape), "finite_pixels": finite_count,
+                    "valid_pixels": int(valid.sum()), "target_valid": bool(valid[iy, ix]),
+                    "observation": {key: clean(header.get(key)) for key in
+                                    ("DATE-OBS", "DATE-BEG", "DATE-END", "MJD-OBS", "OBSID", "DETECTOR", "BUNIT")},
+                    "target_spectral": target_spectral_coordinates(header, hdul, x, y),
+                    "display": display_payload(data, valid, flags, lo, hi, minimum, maximum,
+                                               fallback, str(header.get("BUNIT", ""))),
                     "target_pixel_xy": [float(x), float(y)], "stretch": {"p1": float(lo), "p99": float(hi), "method": "asinh(10x)"},
                     "orientation": "native detector orientation; FITS rows flipped vertically for PNG"}
         # ObsCore t_min/t_max are MJD days. Preserve raw values and column metadata too.

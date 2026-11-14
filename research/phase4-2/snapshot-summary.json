@@ -1,0 +1,494 @@
+{
+  "generated_utc": "2026-11-14T12:20:14.797473+00:00",
+  "environment": {
+    "python": "3.11.1 (tags/v3.11.1:a7a450f, Dec  6 2022, 19:58:39) [MSC v.1934 64 bit (AMD64)]",
+    "numpy": "2.0.2",
+    "astropy": "6.1.7",
+    "pillow": "11.3.0",
+    "psutil": "7.2.2"
+  },
+  "grid": {
+    "shape_yx": [
+      29,
+      29
+    ],
+    "pixel_scale_arcsec": 6.15,
+    "center_xy": [
+      14,
+      14
+    ],
+    "orientation": "north up east left after flipud for PNG",
+    "fits_header": {
+      "WCSAXES": 2,
+      "CRPIX1": 15,
+      "CRPIX2": 15,
+      "CDELT1": -0.0017083333333333,
+      "CDELT2": 0.0017083333333333,
+      "CUNIT1": "deg",
+      "CUNIT2": "deg",
+      "CTYPE1": "RA---TAN",
+      "CTYPE2": "DEC--TAN",
+      "CRVAL1": 127.69444,
+      "CRVAL2": -39.1776,
+      "LONPOLE": 180,
+      "LATPOLE": -39.1776,
+      "MJDREF": 0,
+      "RADESYS": "ICRS"
+    }
+  },
+  "frames": [
+    {
+      "obs_id": "2025W18_1B_0162_3",
+      "status": "reprojected",
+      "date_obs": "2025-04-29T14:18:55.983",
+      "sha256": "5ac314abbe6729c1cf2e404aa3e6c0a847b260f27f3d7cef4ee443ab30ac4adf",
+      "bytes": 3965760,
+      "pipeline_version": "7.0.5",
+      "target_native_xy": [
+        14.327577762368566,
+        14.30554917316012
+      ],
+      "target_grid_xy": [
+        14,
+        13.9999999999905
+      ],
+      "center_inside": true,
+      "center_finite": true,
+      "center_quality_accepted": true,
+      "center_flags": 2097152,
+      "finite_fraction": 1,
+      "quality_fraction": 0.9714625445897741,
+      "aligned_valid_fraction": 0.7693222354340071,
+      "geometric_covered_fraction": 0.8133174791914387,
+      "geometry_roundtrip_max_pixels": 9.913817582621377e-11,
+      "target_local_pixel_scale_arcsec": [
+        6.185134751172828,
+        6.1747063097584975
+      ],
+      "spectral": {
+        "wavelength_um": 0.7699796305821458,
+        "bandwidth_um": 0.01906443821906968,
+        "table_xy_fits": [
+          767.3275777623686,
+          1813.3055491731602
+        ],
+        "method": "bilinear WCS-WAVE; alternate W linear transform; no spatial SIP",
+        "scope": "visualization approximation, not precision photometry",
+        "wcslib_core_check_um": [
+          0.7699796305821456,
+          0.01906443821906968
+        ],
+        "max_check_error_um": 2.220446049250313e-16,
+        "status": "pass"
+      },
+      "display": {
+        "aligned_individual": {
+          "lo": 0.20806514263153075,
+          "hi": 5.616744689941405
+        },
+        "native_individual": {
+          "lo": 0.1962728863954544,
+          "hi": 5.332324619293247
+        },
+        "all_frame_shared": {
+          "lo": 0.2195777878165245,
+          "hi": 6.154710745811463,
+          "scope": "cross-wavelength diagnostic only"
+        },
+        "aligned_median_mjy_sr": 0.26860150694847107
+      },
+      "empirical_alignment": {
+        "status": "reference_frame",
+        "matched_stars": null
+      }
+    },
+    {
+      "obs_id": "2025W21_1B_0582_1",
+      "status": "download_failed",
+      "reason": "<HTTPError 503: 'Service Unavailable'>"
+    },
+    {
+      "obs_id": "2025W45_1A_0121_1",
+      "status": "reprojected",
+      "date_obs": "2025-11-03T13:32:22.030",
+      "sha256": "8135167fd6809347791a36b3ec0646ad21a00082d233141df37990e33f66c250",
+      "bytes": 3965760,
+      "pipeline_version": "7.0.5",
+      "target_native_xy": [
+        14.224706857362591,
+        13.627494493528728
+      ],
+      "target_grid_xy": [
+        14,
+        13.9999999999905
+      ],
+      "center_inside": true,
+      "center_finite": true,
+      "center_quality_accepted": true,
+      "center_flags": 2097152,
+      "finite_fraction": 1,
+      "quality_fraction": 0.9869203329369798,
+      "aligned_valid_fraction": 0.8204518430439952,
+      "geometric_covered_fraction": 0.8501783590963139,
+      "geometry_roundtrip_max_pixels": 3.200514327243369e-11,
+      "target_local_pixel_scale_arcsec": [
+        6.173424528745691,
+        6.160359038050073
+      ],
+      "spectral": {
+        "wavelength_um": 0.8614523452914593,
+        "bandwidth_um": 0.02136228898155913,
+        "table_xy_fits": [
+          672.2247068573625,
+          1266.6274944935287
+        ],
+        "method": "bilinear WCS-WAVE; alternate W linear transform; no spatial SIP",
+        "scope": "visualization approximation, not precision photometry",
+        "wcslib_core_check_um": [
+          0.8614523452914593,
+          0.021362288981559126
+        ],
+        "max_check_error_um": 3.469446951953614e-18,
+        "status": "pass"
+      },
+      "display": {
+        "aligned_individual": {
+          "lo": 0.25447138607501985,
+          "hi": 5.139901208877572
+        },
+        "native_individual": {
+          "lo": 0.23959991574287415,
+          "hi": 5.4932687711715875
+        },
+        "all_frame_shared": {
+          "lo": 0.2195777878165245,
+          "hi": 6.154710745811463,
+          "scope": "cross-wavelength diagnostic only"
+        },
+        "aligned_median_mjy_sr": 0.3176823854446411
+      },
+      "empirical_alignment": {
+        "status": "pass",
+        "matched_stars": 7,
+        "median_pixels": 0.17797348854193154,
+        "max_pixels": 0.3002879179843887,
+        "median_arcsec": 1.0945369545328791,
+        "method": "independent 5x5 background-subtracted centroids; mutual nearest <=1.5px; no fitted shift",
+        "caveat": "cross-wavelength morphology and blends can bias centroids"
+      }
+    },
+    {
+      "obs_id": "2025W49_1A_0391_1",
+      "status": "reprojected",
+      "date_obs": "2025-12-02T18:22:40.111",
+      "sha256": "5334bef8b3cf4134108440dfba037f8002c7c5d082f5f4e4dd1edc8605dfb817",
+      "bytes": 3965760,
+      "pipeline_version": "7.0.5",
+      "target_native_xy": [
+        13.722888198946682,
+        14.408180354343436
+      ],
+      "target_grid_xy": [
+        14,
+        13.9999999999905
+      ],
+      "center_inside": true,
+      "center_finite": true,
+      "center_quality_accepted": true,
+      "center_flags": 2097152,
+      "finite_fraction": 1,
+      "quality_fraction": 0.9892984542211652,
+      "aligned_valid_fraction": 0.8192627824019025,
+      "geometric_covered_fraction": 0.8489892984542212,
+      "geometry_roundtrip_max_pixels": 2.5867230285326415e-11,
+      "target_local_pixel_scale_arcsec": [
+        6.1735680329526605,
+        6.160510180379024
+      ],
+      "spectral": {
+        "wavelength_um": 0.861534422387175,
+        "bandwidth_um": 0.021361418750176213,
+        "table_xy_fits": [
+          666.7228881989466,
+          1266.4081803543434
+        ],
+        "method": "bilinear WCS-WAVE; alternate W linear transform; no spatial SIP",
+        "scope": "visualization approximation, not precision photometry",
+        "wcslib_core_check_um": [
+          0.8615344223871749,
+          0.02136141875017621
+        ],
+        "max_check_error_um": 1.1102230246251565e-16,
+        "status": "pass"
+      },
+      "display": {
+        "aligned_individual": {
+          "lo": 0.2319372797012329,
+          "hi": 6.004378242492677
+        },
+        "native_individual": {
+          "lo": 0.21485999420285226,
+          "hi": 6.017057657241786
+        },
+        "all_frame_shared": {
+          "lo": 0.2195777878165245,
+          "hi": 6.154710745811463,
+          "scope": "cross-wavelength diagnostic only"
+        },
+        "aligned_median_mjy_sr": 0.29504451155662537
+      },
+      "empirical_alignment": {
+        "status": "residual_exceeds_threshold",
+        "matched_stars": 5,
+        "median_pixels": 0.20893018255229032,
+        "max_pixels": 1.0825988842489438,
+        "median_arcsec": 1.2849206226965855,
+        "method": "independent 5x5 background-subtracted centroids; mutual nearest <=1.5px; no fitted shift",
+        "caveat": "cross-wavelength morphology and blends can bias centroids"
+      }
+    },
+    {
+      "obs_id": "2026W21_1A_0480_1",
+      "status": "reprojected",
+      "date_obs": "2026-05-21T03:27:20.505",
+      "sha256": "a2f9ed0e9d217e033765e4424d67fe6e23988676d07e35e0ab3ec4150c139a2a",
+      "bytes": 3965760,
+      "pipeline_version": "7.0.5",
+      "target_native_xy": [
+        13.957079468288626,
+        14.104161729273663
+      ],
+      "target_grid_xy": [
+        14,
+        13.9999999999905
+      ],
+      "center_inside": true,
+      "center_finite": true,
+      "center_quality_accepted": true,
+      "center_flags": 2097152,
+      "finite_fraction": 1,
+      "quality_fraction": 0.9560047562425684,
+      "aligned_valid_fraction": 0.7253269916765755,
+      "geometric_covered_fraction": 0.8097502972651606,
+      "geometry_roundtrip_max_pixels": 3.103808211735658e-11,
+      "target_local_pixel_scale_arcsec": [
+        6.167558966741111,
+        6.148116845050995
+      ],
+      "spectral": {
+        "wavelength_um": 0.9656327712534107,
+        "bandwidth_um": 0.02521924603075848,
+        "table_xy_fits": [
+          356.9570794682886,
+          726.1041617292736
+        ],
+        "method": "bilinear WCS-WAVE; alternate W linear transform; no spatial SIP",
+        "scope": "visualization approximation, not precision photometry",
+        "wcslib_core_check_um": [
+          0.9656327712534106,
+          0.02521924603075848
+        ],
+        "max_check_error_um": 1.1102230246251565e-16,
+        "status": "pass"
+      },
+      "display": {
+        "aligned_individual": {
+          "lo": 0.2530414405465126,
+          "hi": 7.290102963447564
+        },
+        "native_individual": {
+          "lo": 0.24082254320383073,
+          "hi": 7.612847895622292
+        },
+        "all_frame_shared": {
+          "lo": 0.2195777878165245,
+          "hi": 6.154710745811463,
+          "scope": "cross-wavelength diagnostic only"
+        },
+        "aligned_median_mjy_sr": 0.3400135636329651
+      },
+      "empirical_alignment": {
+        "status": "pass",
+        "matched_stars": 6,
+        "median_pixels": 0.20720484308977027,
+        "max_pixels": 0.284385825313989,
+        "median_arcsec": 1.2743097850020872,
+        "method": "independent 5x5 background-subtracted centroids; mutual nearest <=1.5px; no fitted shift",
+        "caveat": "cross-wavelength morphology and blends can bias centroids"
+      }
+    }
+  ],
+  "spectral_pairs": [
+    {
+      "obs_ids": [
+        "2025W18_1B_0162_3",
+        "2025W21_1B_0582_1"
+      ],
+      "status": "unverified"
+    },
+    {
+      "obs_ids": [
+        "2025W18_1B_0162_3",
+        "2025W45_1A_0121_1"
+      ],
+      "status": "different_bandpass",
+      "delta_wavelength_um": 0.09147271470931351,
+      "delta_over_narrower_bandwidth": 4.798080785712093,
+      "relative_bandwidth_difference": 0.1205307356075653,
+      "empirical_alignment": {
+        "status": "pass",
+        "matched_stars": 7,
+        "median_pixels": 0.17797348854193154,
+        "max_pixels": 0.3002879179843887,
+        "median_arcsec": 1.0945369545328791,
+        "method": "independent 5x5 background-subtracted centroids; mutual nearest <=1.5px; no fitted shift",
+        "caveat": "cross-wavelength morphology and blends can bias centroids"
+      }
+    },
+    {
+      "obs_ids": [
+        "2025W18_1B_0162_3",
+        "2025W49_1A_0391_1"
+      ],
+      "status": "different_bandpass",
+      "delta_wavelength_um": 0.09155479180502923,
+      "delta_over_narrower_bandwidth": 4.802386031676993,
+      "relative_bandwidth_difference": 0.12048508876641968,
+      "empirical_alignment": {
+        "status": "residual_exceeds_threshold",
+        "matched_stars": 5,
+        "median_pixels": 0.20893018255229032,
+        "max_pixels": 1.0825988842489438,
+        "median_arcsec": 1.2849206226965855,
+        "method": "independent 5x5 background-subtracted centroids; mutual nearest <=1.5px; no fitted shift",
+        "caveat": "cross-wavelength morphology and blends can bias centroids"
+      }
+    },
+    {
+      "obs_ids": [
+        "2025W18_1B_0162_3",
+        "2026W21_1A_0480_1"
+      ],
+      "status": "different_bandpass",
+      "delta_wavelength_um": 0.19565314067126494,
+      "delta_over_narrower_bandwidth": 10.262727829848037,
+      "relative_bandwidth_difference": 0.32284233823015573,
+      "empirical_alignment": {
+        "status": "pass",
+        "matched_stars": 6,
+        "median_pixels": 0.20720484308977027,
+        "max_pixels": 0.284385825313989,
+        "median_arcsec": 1.2743097850020872,
+        "method": "independent 5x5 background-subtracted centroids; mutual nearest <=1.5px; no fitted shift",
+        "caveat": "cross-wavelength morphology and blends can bias centroids"
+      }
+    },
+    {
+      "obs_ids": [
+        "2025W21_1B_0582_1",
+        "2025W45_1A_0121_1"
+      ],
+      "status": "unverified"
+    },
+    {
+      "obs_ids": [
+        "2025W21_1B_0582_1",
+        "2025W49_1A_0391_1"
+      ],
+      "status": "unverified"
+    },
+    {
+      "obs_ids": [
+        "2025W21_1B_0582_1",
+        "2026W21_1A_0480_1"
+      ],
+      "status": "unverified"
+    },
+    {
+      "obs_ids": [
+        "2025W45_1A_0121_1",
+        "2025W49_1A_0391_1"
+      ],
+      "status": "candidate_visual_band_match",
+      "delta_wavelength_um": 0.00008207709571572686,
+      "delta_over_narrower_bandwidth": 0.0038423054515070443,
+      "relative_bandwidth_difference": 0.00004073846372723525,
+      "empirical_alignment": {
+        "status": "pass",
+        "matched_stars": 5,
+        "median_pixels": 0.2014525444750974,
+        "max_pixels": 0.9015147413291876,
+        "median_arcsec": 1.238933148521849,
+        "method": "independent 5x5 background-subtracted centroids; mutual nearest <=1.5px; no fitted shift",
+        "caveat": "cross-wavelength morphology and blends can bias centroids"
+      }
+    },
+    {
+      "obs_ids": [
+        "2025W45_1A_0121_1",
+        "2026W21_1A_0480_1"
+      ],
+      "status": "different_bandpass",
+      "delta_wavelength_um": 0.10418042596195143,
+      "delta_over_narrower_bandwidth": 4.87683815399579,
+      "relative_bandwidth_difference": 0.18054980215504277,
+      "empirical_alignment": {
+        "status": "pass",
+        "matched_stars": 5,
+        "median_pixels": 0.13068708059834686,
+        "max_pixels": 0.27598535863554013,
+        "median_arcsec": 0.8037255456798332,
+        "method": "independent 5x5 background-subtracted centroids; mutual nearest <=1.5px; no fitted shift",
+        "caveat": "cross-wavelength morphology and blends can bias centroids"
+      }
+    },
+    {
+      "obs_ids": [
+        "2025W49_1A_0391_1",
+        "2026W21_1A_0480_1"
+      ],
+      "status": "different_bandpass",
+      "delta_wavelength_um": 0.1040983488662357,
+      "delta_over_narrower_bandwidth": 4.873194523438523,
+      "relative_bandwidth_difference": 0.18059789594033604,
+      "empirical_alignment": {
+        "status": "residual_exceeds_threshold",
+        "matched_stars": 5,
+        "median_pixels": 0.07699258527682758,
+        "max_pixels": 1.247687949831305,
+        "median_arcsec": 0.4735043994524896,
+        "method": "independent 5x5 background-subtracted centroids; mutual nearest <=1.5px; no fitted shift",
+        "caveat": "cross-wavelength morphology and blends can bias centroids"
+      }
+    }
+  ],
+  "matched_pair_normalizations": [
+    {
+      "obs_ids": [
+        "2025W45_1A_0121_1",
+        "2025W49_1A_0391_1"
+      ],
+      "common_pixels": 650,
+      "lo": 0.23790154367685318,
+      "hi": 5.7043284368514975,
+      "method": "common valid footprint pooled p1/p99 + asinh(10x)",
+      "pair_alignment_status": "pass",
+      "scope": "target-wavelength matched display diagnostic; field-wide passbands not verified; no photometry claim"
+    }
+  ],
+  "requests": {
+    "attempts": 7,
+    "distinct_urls": 4,
+    "status_counts": {
+      "200": 3,
+      "503": 4
+    },
+    "bytes": 11897280,
+    "first_utc": "2026-11-14T12:17:30.906556+00:00",
+    "last_utc": "2026-11-14T12:18:31.824822+00:00"
+  },
+  "memory": {
+    "process_peak_working_set_bytes": 78323712,
+    "scope": "Windows local process; not 512MB-limited Render verification"
+  }
+}

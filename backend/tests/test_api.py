@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
+from astropy.io import fits
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -112,10 +113,22 @@ class ApiTests(unittest.TestCase):
         black = self.client.get(result["image_url"])
         white = self.client.get(result["inverted_image_url"])
         self.assertEqual(black.headers["content-type"], "image/png")
-        a = np.array(Image.open(io.BytesIO(black.content)))
-        b = np.array(Image.open(io.BytesIO(white.content)))
-        np.testing.assert_array_equal(a, np.array(Image.open(FIXTURES / "black-background.png")))
-        np.testing.assert_array_equal(b, 255 - a)
+        a = np.array(Image.open(io.BytesIO(black.content)).convert("RGBA"))
+        b = np.array(Image.open(io.BytesIO(white.content)).convert("RGBA"))
+        np.testing.assert_array_equal(b[:, :, :3], 255 - a[:, :, :3])
+        np.testing.assert_array_equal(b[:, :, 3], a[:, :, 3])
+        display = result["metadata"]["display"]
+        valid = np.array(display["valid"]).reshape(29, 29)
+        np.testing.assert_array_equal(a[:, :, 3], np.flipud(valid) * 255)
+        self.assertEqual(sum(display["histogram"]["counts"]), int(valid.sum()))
+        # The old PNG included quality-flagged samples. Verify the retained
+        # asinh transform against that baseline separately from the new mask.
+        with fits.open(FIXTURES / "cutout.fits", memmap=False) as hdul:
+            data = hdul["IMAGE"].data
+            finite = np.isfinite(data)
+            lo, hi = np.percentile(data[finite], [1, 99])
+            legacy = spherex.stretch_pixels(data, finite, lo, hi)
+        np.testing.assert_allclose(legacy, np.array(Image.open(FIXTURES / "black-background.png")), atol=1)
 
     @unittest.skipUnless(os.getenv("SPHEREX_LIVE") == "1", "Set SPHEREX_LIVE=1 for a real NASA request")
     def test_live_nasa(self):

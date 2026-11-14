@@ -3,7 +3,7 @@
 NASA Space Apps 專案：以天球座標探索 SPHEREx 紅外線影像。
 
 - `research/`：Phase 1 NASA 查詢、FITS 處理與已保存的真實輸出。
-- `backend/`：Phase 2 FastAPI；API、限制與啟動方式見 [backend/README.md](backend/README.md)。
+- `backend/`：FastAPI 單張預覽與 Phase 4.3 多時期 metadata 查詢；API、限制與啟動方式見 [backend/README.md](backend/README.md)。
 - `frontend/`：Phase 3 純 HTML、CSS、JavaScript 單張影像預覽，無建置及前端套件依賴。
 
 ## Requirements

@@ -2,26 +2,31 @@ import logging
 import os
 import re
 import threading
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .cache import ImageCache
 from .service import PreviewError, create_preview
+from .epochs import SnapshotCache, search_metadata
 
 log = logging.getLogger(__name__)
 
 
-class PreviewRequest(BaseModel):
+class CoordinateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False, strict=True)
     ra: Annotated[float, Field(ge=0, lt=360, description="ICRS RA in decimal degrees")]
     dec: Annotated[float, Field(ge=-90, le=90, description="ICRS Dec in decimal degrees")]
     radius_deg: Annotated[float, Field(gt=0, le=5 / 60, description="SIA circle radius in degrees; cutout remains 3arcmin")]
+
+
+class PreviewRequest(CoordinateRequest):
+    detector: Annotated[int, Field(ge=1, le=6, description="SPHEREx detector; omit or null for Auto")] | None = None
 
 
 class PreviewResponse(BaseModel):
@@ -30,6 +35,28 @@ class PreviewResponse(BaseModel):
     inverted_image_url: str
     expires_in_seconds: int
     metadata: dict[str, Any]
+
+
+class EpochSearchRequest(CoordinateRequest):
+    collections: Annotated[list[Literal["spherex_dr1", "spherex_qr3"]], Field(min_length=1, max_length=2)] = ["spherex_dr1", "spherex_qr3"]
+    detectors: Annotated[list[Annotated[int, Field(ge=1, le=6)]], Field(min_length=1, max_length=6)] | None = None
+    time_range_mjd: Annotated[list[float], Field(min_length=2, max_length=2)] | None = None
+    limit: Annotated[int, Field(ge=1, le=200)] = 100
+    cursor: Annotated[str, Field(min_length=1, max_length=160)] | None = None
+
+    @field_validator("collections", "detectors")
+    @classmethod
+    def unique_filters(cls, value):
+        if value is not None and len(value) != len(set(value)):
+            raise ValueError("Filters must not contain duplicates")
+        return sorted(value) if value is not None else None
+
+    @field_validator("time_range_mjd")
+    @classmethod
+    def ordered_time(cls, value):
+        if value is not None and value[0] > value[1]:
+            raise ValueError("MJD start must not exceed end")
+        return value
 
 
 def origins_from_env():
@@ -49,6 +76,7 @@ def create_app():
                        allow_headers=["Content-Type"], expose_headers=["Retry-After"])
     app.state.image_cache = ImageCache()
     app.state.preview_lock = threading.Lock()
+    app.state.epoch_cache = SnapshotCache()
 
     @app.exception_handler(PreviewError)
     async def preview_error(request, exc):
@@ -65,12 +93,14 @@ def create_app():
         return {"status": "ok"}
 
     @app.post("/api/preview", response_model=PreviewResponse)
-    def preview(payload: PreviewRequest, request: Request):
+    def preview(payload: PreviewRequest, request: Request, response: Response):
+        response.headers["Cache-Control"] = "no-store"
         if not app.state.preview_lock.acquire(blocking=False):
             return JSONResponse(status_code=503, headers={"Retry-After": "5"},
                                 content={"error": {"code": "busy", "message": "影像處理中，請稍後重試。"}})
         try:
-            black, white, metadata = create_preview(payload.ra, payload.dec, payload.radius_deg)
+            options = {} if payload.detector is None else {"detector": payload.detector}
+            black, white, metadata = create_preview(payload.ra, payload.dec, payload.radius_deg, **options)
             key = app.state.image_cache.put(black, white)
             return {"key": key,
                     "image_url": str(request.url_for("get_image", key=key)),
@@ -92,6 +122,33 @@ def create_app():
         if image is None:
             raise PreviewError(404, "image_not_found", "影像不存在或已到期，請重新查詢。")
         return Response(content=image, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+    @app.post("/api/epochs/search")
+    def epochs_search(payload: EpochSearchRequest):
+        query = payload.model_dump(exclude={"limit", "cursor"})
+        query["collections"] = sorted(query["collections"])
+        cache = app.state.epoch_cache
+        if payload.cursor is not None:
+            snapshot, offset = cache.resume(payload.cursor, query)
+            return cache.page(snapshot, offset, payload.limit)
+        snapshot = cache.find(query)
+        if snapshot is not None:
+            return cache.page(snapshot, 0, payload.limit)
+        if not app.state.preview_lock.acquire(blocking=False):
+            return JSONResponse(status_code=503, headers={"Retry-After": "5"},
+                                content={"error": {"code": "busy", "message": "已有查詢或影像工作處理中，請稍後重試。"}})
+        try:
+            snapshot = cache.find(query)
+            if snapshot is None:
+                snapshot = cache.put(search_metadata(query))
+            return cache.page(snapshot, 0, payload.limit)
+        except PreviewError:
+            raise
+        except Exception as exc:
+            log.exception("Unexpected epoch metadata search error")
+            raise PreviewError(500, "internal_error", "多時期 metadata 查詢失敗，請稍後重試。") from exc
+        finally:
+            app.state.preview_lock.release()
 
     return app
 

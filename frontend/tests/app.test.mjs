@@ -13,18 +13,22 @@ function setup({ host = '127.0.0.1', stored = null, response, imageFail = false,
     removeAttribute(k) { delete this.attrs[k]; }
     replaceChildren() { this.children = []; }
     append(...items) { this.children.push(...items); }
+    getContext() { return { clearRect() {}, fillRect() {}, createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }), putImageData: frame => { this.frame = frame; } }; }
+    toDataURL() { return 'data:image/png;base64,local-display'; }
     set src(value) { this.url = value; queueMicrotask(() => imageFail ? this.onerror?.() : this.onload?.()); }
   }
   for (const [, id] of html.matchAll(/id="([^"]+)"/g)) elements[id] = new Element();
   for (const [id, value] of Object.entries({ ra: '127.69444', dec: '-39.17760', radius: '0.01', zoom: '12' })) elements[id].value = value;
   const calls = [], timers = new Map(); let timerId = 0;
-  vm.runInNewContext(script, {
+  const environment = {
     document: { getElementById: id => { assert.ok(elements[id], `Missing HTML ID ${id}`); return elements[id]; }, createElement: () => new Element() },
     location: { hostname: host, protocol: host === '127.0.0.1' ? 'http:' : 'https:' }, window: {}, URL, AbortController, TypeError,
     localStorage: { getItem: () => { if (storageFail) throw Error(); return stored; }, setItem() {} },
     setTimeout: (fn, ms) => { timers.set(++timerId, { fn, ms }); return timerId; }, clearTimeout: id => timers.delete(id),
     fetch: async (...args) => { calls.push(args); if (hang) return new Promise((resolve, reject) => args[1].signal.addEventListener('abort', () => { const error = new Error(); error.name = 'AbortError'; reject(error); })); if (fetchFail) throw new TypeError('network'); return response || success(); }
-  });
+  };
+  vm.runInNewContext(readFileSync(new URL('../brightness.js', import.meta.url), 'utf8'), environment);
+  vm.runInNewContext(script, environment);
   return { e: elements, calls, timers, submit: () => elements['search-form'].events.submit({ preventDefault() {} }) };
 }
 const success = () => ({ ok: true, status: 200, json: async () => ({ image_url: `http://internal:8000/api/images/${'a'.repeat(32)}.png`, inverted_image_url: `/api/images/${'a'.repeat(32)}-inverse.png`, expires_in_seconds: 600, metadata: { detector: 1, t_min_utc: '2025-04-29T14:18:55.958', sia: { obs_id: '<script>unsafe</script>' }, query: { ra: 127.69444, dec: -39.1776 } } }) });
@@ -45,6 +49,28 @@ for (const [field, value] of [['ra', '360'], ['ra', '-1'], ['dec', '91'], ['dec'
   test(`reject invalid ${field}=${value}`, async () => { const s = setup(); s.e[field].value = value; await s.submit(); assert.equal(s.calls.length, 0); assert.equal(s.e.status.dataset.state, 'error'); });
 }
 test('coordinate boundaries accepted', async () => { const s = setup(); s.e.ra.value = '0'; s.e.dec.value = '-90'; s.e.radius.value = String(5 / 60); await s.submit(); assert.equal(s.calls.length, 1); });
+
+test('D1–D6 are numeric backend filters; Auto omits the optional field', async () => {
+  for (let detector = 1; detector <= 6; detector++) {
+    const s = setup(); s.e.detector.value = String(detector);
+    const pending = s.submit(); assert.equal(s.e.detector.disabled, true); await pending;
+    assert.equal(JSON.parse(s.calls[0][1].body).detector, detector);
+    assert.equal(s.e.detector.disabled, false);
+  }
+  const s = setup(); await s.submit();
+  assert.equal('detector' in JSON.parse(s.calls[0][1].body), false);
+  s.e.detector.value = '7'; await s.submit(); assert.equal(s.calls.length, 1);
+});
+
+for (const [code, message] of [['detector_not_found', '完整查詢沒有 D6'], ['detector_search_incomplete', 'SIA 截斷，無法確認 D6'], ['detector_cutout_failed', 'D6 Cutout 未通過檢查']]) {
+  test(`detector error ${code} is shown without automatic fallback`, async () => {
+    const s = setup({ response: { ok: false, status: 503, headers: { get: () => null }, json: async () => ({ error: { code, message } }) } });
+    s.e.detector.value = '6'; await s.submit();
+    assert.equal(s.calls.length, 1); assert.equal(s.e.detector.value, '6');
+    assert.match(s.e.status.textContent, new RegExp(message));
+    assert.equal(s.e.status.dataset.state, 'error'); assert.equal(s.e.preview.hidden, true);
+  });
+}
 test('public page defaults to Render and blocks loopback', async () => { const s = setup({ host: 'example.github.io', stored: JSON.stringify({ environment: 'local' }) }); assert.equal(s.e.environment.value, 'render'); await s.submit(); assert.equal(s.calls.length, 0); s.e['api-url'].value = 'http://localhost:8000'; await s.submit(); assert.match(s.e.status.textContent, /公開前端/); });
 test('Render HTTPS, URL validation and environment persistence', async () => {
   const s = setup(); s.e.environment.value = 'render'; s.e.environment.events.change();
@@ -59,3 +85,29 @@ test('malformed JSON', async () => { const s = setup({ response: { status: 502, 
 test('expired PNG', async () => { const s = setup({ imageFail: true }); await s.submit(); assert.match(s.e.status.textContent, /快取/); assert.equal(s.e.black.disabled, true); });
 test('storage unavailable still works', async () => { const s = setup({ storageFail: true }); await s.submit(); assert.equal(s.e.status.dataset.state, 'success'); });
 test('API timeout releases form', async () => { const s = setup({ hang: true }); const task = s.submit(); s.timers.values().next().value.fn(); await task; assert.equal(s.e.search.disabled, false); assert.match(s.e.status.textContent, /180 秒/); assert.equal(s.timers.size, 0); });
+
+test('raw controls default linear, keep histogram/science fixed and never request NASA again', async () => {
+  const data = await success().json();
+  data.metadata.display = { available: true, shape: [1, 3], unit: 'MJy/sr', values: [-1, null, 5], valid: [true, false, true], flags: [0, 0, 2097152], min: -1, max: 5, lo: -1, hi: 5, histogram: { counts: [1, 1], edges: [-1, 2, 5] } };
+  const original = JSON.stringify(data.metadata.display);
+  const s = setup({ response: { ok: true, status: 200, json: async () => data } });
+  await s.submit();
+  assert.equal(s.e.brightness.hidden, false);
+  assert.equal(s.e.stretch.value, 'linear');
+  assert.match(s.e.preview.url, /^data:image\/png/);
+  assert.match(s.e['histogram-range'].textContent, /總數 2/);
+  s.e.minimum.value = '0'; s.e.minimum.events.input();
+  assert.equal(s.e['minimum-number'].value, '0');
+  s.e['maximum-number'].value = '10'; s.e['maximum-number'].events.change();
+  assert.equal(s.e.maximum.value, 10);
+  s.e.stretch.value = 'asinh'; s.e.stretch.events.change();
+  await s.e.white.events.click();
+  assert.equal(s.e.white.attrs['aria-pressed'], 'true');
+  s.e['minimum-number'].value = '20'; s.e['minimum-number'].events.change();
+  assert.match(s.e['brightness-status'].textContent, /最大值必須大於/);
+  s.e['reset-brightness'].events.click();
+  assert.equal(s.e['minimum-number'].value, '-1');
+  assert.equal(s.e.stretch.value, 'linear');
+  assert.equal(JSON.stringify(data.metadata.display), original);
+  assert.equal(s.calls.length, 1);
+});
