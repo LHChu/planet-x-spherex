@@ -2,11 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
+import { axesFixture } from './axes-fixture.mjs';
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const sid = 'a'.repeat(32);
 const product = (id, day, detector = 1, obs = id) => ({ product_id: id, obs_id: obs, detector, t_min: 60000 + day, source_collections: ['spherex_dr1'], frame_status: 'not_requested' });
 const candidates = [product('late', 4), product('early', 0), product('middle', 1), product('fourth', 2), product('d2', 3, 2), product('alternative', 4, 1, 'late')];
-function setup({ apiError, pngError = false, failed = false, allFailed = false, mode = 'observation_browse', malformed = false, network = false, hang = false, page = false, reverseDates = false, available = candidates } = {}) {
+function setup({ apiError, pngError = false, failed = false, allFailed = false, mode = 'observation_browse', malformed = false, network = false, hang = false, page = false, reverseDates = false, available = candidates, wcsAxes = axesFixture(), normalization, frameNormalization } = {}) {
   const elements = {}, calls = [], intervals = new Map(), timeouts = new Map(), urls = [], revoked = [];
   let serial = 0;
   class Element {
@@ -15,6 +16,7 @@ function setup({ apiError, pngError = false, failed = false, allFailed = false, 
     setAttribute(k, v) { this.attrs[k] = v; }
     replaceChildren(...items) { this.children = items; }
     append(...items) { this.children.push(...items); }
+    getContext() { return { createImageData: (w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }), putImageData: frame => { this.frame = frame; } }; }
     set src(value) { this.url = value; queueMicrotask(() => this.onload?.()); }
   }
   for (const [, id] of html.matchAll(/id="([^"]+)"/g)) elements[id] = new Element();
@@ -38,10 +40,10 @@ function setup({ apiError, pngError = false, failed = false, allFailed = false, 
       if (apiError || pngError && options.method === 'GET') return { ok: false, status: 410, headers: { get: () => '5' }, json: async () => ({ error: { code: apiError || 'frame_not_found', message: 'test failure' } }) };
       if (options.method === 'GET') return { ok: true, blob: async () => ({}) };
       const ids = JSON.parse(options.body).product_ids;
-      return ok({ search_id: sid, sequence_id: sid, mode, normalization: { policy: 'mock-policy' }, frames: ids.map((id, index) => ({ ...available.find(p => p.product_id === id), index, observation_utc: `2025-01-0${reverseDates ? ids.length - index : index + 1}T00:00:00Z`, time_source: 'FITS_DATE-OBS', status: allFailed || failed && index === 1 ? 'failed' : 'alignment_unqualified', alignment: { status: 'unverified' }, image_url: allFailed || failed && index === 1 ? null : `http://internal/api/epoch-frames/${sid}/${index}.png`, error: { code: 'cutout_failed', message: 'kept failure slot' }, target_wavelength_um: .86, target_bandwidth_um: .021 })) });
+      return ok({ search_id: sid, sequence_id: sid, mode, wcs_axes: wcsAxes, normalization: normalization ?? { policy: 'mock-policy' }, frames: ids.map((id, index) => ({ ...available.find(p => p.product_id === id), index, observation_utc: `2025-01-0${reverseDates ? ids.length - index : index + 1}T00:00:00Z`, time_source: 'FITS_DATE-OBS', status: allFailed || failed && index === 1 ? 'failed' : 'alignment_unqualified', alignment: { status: 'unverified' }, normalization: frameNormalization?.(index), image_url: allFailed || failed && index === 1 ? null : `http://internal/api/epoch-frames/${sid}/${index}.png`, error: { code: 'cutout_failed', message: 'kept failure slot' }, target_wavelength_um: .86, target_bandwidth_um: .021 })) });
     }
   };
-  for (const file of ['epochs.js', 'app.js']) vm.runInNewContext(readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'), environment);
+  for (const file of ['wcs-axes.js', 'color-bar.js', 'epochs.js', 'app.js']) vm.runInNewContext(readFileSync(new URL(`../${file}`, import.meta.url), 'utf8'), environment);
   const e = elements;
   e['explorer-mode'].value = 'epochs'; e['explorer-mode'].events.change();
   const submit = () => e['search-form'].events.submit({ preventDefault() {} });
@@ -54,10 +56,109 @@ test('search uses shared coordinates and detectors array, never loads FITS autom
   const s = setup(); s.e.detector.value = '6'; await s.submit();
   assert.deepEqual(JSON.parse(s.calls[0].body), { ra: 127.69444, dec: -39.1776, radius_deg: .01, detectors: [6], limit: 100 });
   assert.equal(s.calls.length, 1); assert.match(s.calls[0].url, /epochs\/search$/);
-  assert.match(s.e['epochs-sources'].textContent, /partial.*truncated.*查詢不完整/);
+  assert.match(s.e['epochs-sources'].textContent, /partial.*truncated.*Search incomplete/);
   assert.match(s.e['epoch-products'].children[0].children[1].textContent, /2023-/);
   assert.match(s.e['epoch-products'].children[0].children[3].textContent, /early.*not_requested/);
   assert.equal(s.e['preview-panel'].hidden, true);
+});
+
+test('all frames, failed slots and mode switches keep identical common-grid ticks', async () => {
+  const s = setup({ failed: true }); await s.submit(); s.quick(3); await s.load();
+  const annotations = () => JSON.stringify(s.e['epoch-axes'].children);
+  const before = annotations(), fetches = s.calls.length;
+  s.e['epoch-next'].events.click(); assert.equal(annotations(), before);
+  assert.match(s.e['epoch-image'].children[0].textContent, /Cannot display/);
+  s.e['epoch-play'].events.click(); s.intervals.values().next().value.fn(); assert.equal(annotations(), before);
+  s.e['epoch-time'].value = '0'; s.e['epoch-time'].events.input(); assert.equal(annotations(), before);
+  s.e['epoch-zoom'].value = '32'; s.e['epoch-zoom'].events.input(); assert.notEqual(annotations(), before);
+  s.e['epoch-zoom'].value = '12'; s.e['epoch-zoom'].events.input(); assert.equal(annotations(), before);
+  s.e['explorer-mode'].value = 'preview'; s.e['explorer-mode'].events.change();
+  s.e['explorer-mode'].value = 'epochs'; s.e['explorer-mode'].events.change(); assert.equal(annotations(), before);
+  assert.equal(s.calls.length, fetches);
+  await s.submit(); assert.equal(s.e['epoch-axes'].children.length, 0);
+});
+
+test('a sequence without reliable WCS shows unavailable, never the search centre as ticks', async () => {
+  const s = setup({ wcsAxes: null }); await s.submit(); s.quick(2); await s.load();
+  assert.equal(s.e['epoch-axes'].children[0].textContent, 'WCS unavailable');
+  s.e['epoch-next'].events.click();
+  assert.equal(s.e['epoch-axes'].children.length, 1);
+  assert.equal(s.e['epoch-axes'].children[0].textContent, 'WCS unavailable');
+});
+
+const commonNormalization = { bunit: 'MJy/sr', lo: -2, hi: 6 };
+const frameMap = () => ({ lo: -2, hi: 6, denominator: 8, stretch: 'asinh', a: 10, rounding: 'nearest_even' });
+const colorBody = s => s.e['epoch-colorbar'].children.find(n => n.className === 'colorbar-body');
+const colorTicks = s => colorBody(s).children.filter(n => n.className === 'colorbar-tick').map(n => n.textContent);
+
+test('comparable sequence keeps a shared Color Bar through playback, zoom and mode switches', async () => {
+  const s = setup({ mode: 'comparable_visualization', normalization: commonNormalization, frameNormalization: frameMap });
+  await s.submit(); s.quick(3); await s.load();
+  const ticks = colorTicks(s), ramp = Array.from(colorBody(s).children[0].frame.data), fetches = s.calls.length;
+  assert.match(s.e['epoch-colorbar'].children.at(-1).textContent, /Shared mapping.*not photometry/);
+  s.e['epoch-play'].events.click(); s.intervals.values().next().value.fn();
+  assert.deepEqual(colorTicks(s), ticks); assert.deepEqual(Array.from(colorBody(s).children[0].frame.data), ramp);
+  s.e['epoch-zoom'].value = '32'; s.e['epoch-zoom'].events.input(); assert.deepEqual(colorTicks(s), ticks);
+  s.e['epoch-time'].value = '2'; s.e['epoch-time'].events.input(); assert.deepEqual(colorTicks(s), ticks);
+  s.e['explorer-mode'].value = 'preview'; s.e['explorer-mode'].events.change();
+  s.e['explorer-mode'].value = 'epochs'; s.e['explorer-mode'].events.change(); assert.deepEqual(colorTicks(s), ticks);
+  assert.equal(s.calls.length, fetches);
+  await s.submit(); assert.equal(s.e['epoch-colorbar'].children.length, 0);
+});
+
+test('browse Color Bar follows each physical range and stretch in sorted timeline order', async () => {
+  const s = setup({ reverseDates: true, normalization: { bunit: 'MJy/sr' }, frameNormalization: i =>
+    i === 0 ? frameMap() : { lo: 0, hi: 4, denominator: 4, stretch: 'linear', rounding: 'nearest_even' } });
+  await s.submit(); s.quick(2); await s.load();
+  assert.match(s.e['epoch-current'].textContent, /slot 1/);
+  assert.deepEqual(colorTicks(s), ['0', '1', '2', '3', '4']);
+  assert.match(s.e['epoch-colorbar'].children.at(-1).textContent, /Linear.*Per-frame.*do not compare brightness/);
+  const wcs = JSON.stringify(s.e['epoch-axes'].children), fetches = s.calls.length;
+  s.e['epoch-next'].events.click();
+  assert.deepEqual(colorTicks(s), ['-2', '0', '2', '4', '6']);
+  assert.match(s.e['epoch-colorbar'].children.at(-1).textContent, /Asinh \(10x\)/);
+  assert.equal(JSON.stringify(s.e['epoch-axes'].children), wcs);
+  assert.equal(s.calls.length, fetches);
+});
+
+test('failed slots, missing normalization and inconsistent common scales never show a guessed bar', async () => {
+  const failed = setup({ failed: true, normalization: commonNormalization, frameNormalization: frameMap });
+  await failed.submit(); failed.quick(2); await failed.load();
+  assert.ok(colorBody(failed)); failed.e['epoch-next'].events.click();
+  assert.equal(colorBody(failed), undefined);
+  assert.equal(failed.e['epoch-colorbar'].children[1].textContent, 'Color Bar unavailable');
+  const missing = setup(); await missing.submit(); missing.quick(2); await missing.load();
+  assert.equal(colorBody(missing), undefined);
+  const inconsistent = setup({ mode: 'comparable_visualization', normalization: commonNormalization,
+    frameNormalization: i => ({ ...frameMap(), hi: i === 1 ? 5 : 6 }) });
+  await inconsistent.submit(); inconsistent.quick(2); await inconsistent.load();
+  assert.equal(colorBody(inconsistent), undefined);
+});
+
+test('English epoch states, missing metadata and image descriptions preserve sequence data', async () => {
+  const missing = product('missing', 0);
+  delete missing.t_min;
+  delete missing.source_collections;
+  const s = setup({ available: [missing, product('known', 1)] });
+  assert.equal(s.e.search.textContent, 'Search epochs');
+  const pending = s.submit();
+  assert.equal(s.e.search.textContent, 'Processing multi-epoch data…');
+  assert.match(s.e['epochs-status'].textContent, /Searching epoch metadata without downloading FITS/);
+  await pending;
+  const row = s.e['epoch-products'].children.find(row => row.children[3].textContent.includes('missing'));
+  assert.equal(row.children[1].textContent, 'Time not available');
+  assert.match(row.children[3].textContent, /^Not available/);
+  assert.match(s.e['epochs-status'].textContent, /Found 2 products/);
+  s.quick(2); await s.load();
+  assert.match(s.e['epoch-selection'].textContent, /Selected 2 \/ 3/);
+  assert.match(s.e['epoch-image'].children[0].alt, /PNG reprojected to WCS by the backend/);
+  assert.match(s.e['sequence-details'].textContent, /Frame cache expires: Not available/);
+  assert.match(s.e['epochs-status'].textContent, /Retained 2 slots; loaded 2 PNGs/);
+  assert.equal(JSON.parse(s.e['epoch-raw'].textContent).mode, 'observation_browse');
+  for (const id of ['epochs-status', 'epochs-sources', 'epoch-selection', 'sequence-details', 'sequence-mode', 'epoch-current']) {
+    assert.doesNotMatch(s.e[id].textContent, /\p{Script=Han}/u, id);
+  }
+  assert.equal(s.calls.length, 4);
 });
 test('2–3 products: same detector, distinct exposures, alternatives and fourth hidden', async () => {
   const s = setup(); await s.submit(); s.choose('late');
@@ -72,16 +173,16 @@ test('2–3 products: same detector, distinct exposures, alternatives and fourth
 test('play, pause, speed, slider and zoom reuse loaded PNG nodes with zero extra fetches', async () => {
   const s = setup(); await s.submit(); s.choose('late'); s.choose('early'); await s.load();
   const count = s.calls.length, nodes = [...s.urls];
-  s.e['epoch-play'].events.click(); assert.equal(s.intervals.size, 1);
+  s.e['epoch-play'].events.click(); assert.equal(s.intervals.size, 1); assert.equal(s.e['epoch-play'].textContent, 'Pause');
   s.intervals.values().next().value.fn(); assert.match(s.e['epoch-current'].textContent, /slot 1/);
   s.e['epoch-speed'].value = '500'; s.e['epoch-speed'].events.change(); assert.equal(s.intervals.values().next().value.ms, 500);
-  s.e['epoch-play'].events.click(); assert.equal(s.intervals.size, 0);
+  s.e['epoch-play'].events.click(); assert.equal(s.intervals.size, 0); assert.equal(s.e['epoch-play'].textContent, 'Play');
   s.e['epoch-play'].events.click(); s.e['epoch-time'].value = '0'; s.e['epoch-time'].events.input(); assert.equal(s.intervals.size, 0);
   s.e['epoch-next'].events.click(); s.e['epoch-prev'].events.click();
   s.e['epoch-zoom'].value = '20'; s.e['epoch-zoom'].events.input();
-  assert.equal(s.e['epoch-viewport'].children[0].style.width, '580px');
+  assert.equal(s.e['epoch-image'].children[0].style.width, '580px');
   assert.equal(s.calls.length, count); assert.deepEqual(s.urls, nodes);
-  assert.match(s.e['sequence-mode'].textContent, /observation_browse.*不可比較亮度/);
+  assert.match(s.e['sequence-mode'].textContent, /observation_browse.*do not compare brightness or infer variability/);
   s.e['epoch-play'].events.click(); s.e['explorer-mode'].value = 'preview'; s.e['explorer-mode'].events.change();
   assert.equal(s.intervals.size, 0); assert.equal(s.e['preview-panel'].hidden, false);
   assert.equal(s.timeouts.size, 0);
@@ -91,7 +192,7 @@ test('failed slot retains index/date/reason and is visited during playback', asy
   assert.equal(s.e['epoch-slots'].children.length, 2);
   s.e['epoch-play'].events.click(); s.intervals.values().next().value.fn();
   assert.match(s.e['epoch-current'].textContent, /slot 1.*2025-01-02.*cutout_failed.*kept failure slot/);
-  assert.match(s.e['epoch-viewport'].children[0].textContent, /無法顯示/);
+  assert.match(s.e['epoch-image'].children[0].textContent, /Cannot display/);
   assert.equal(s.calls.length, 3);
 });
 test('all failed slots stay visible and playback disabled', async () => {
@@ -100,30 +201,30 @@ test('all failed slots stay visible and playback disabled', async () => {
 });
 test('comparable visualization remains explicitly non-photometric', async () => {
   const s = setup({ mode: 'comparable_visualization' }); await s.submit(); s.choose('early'); s.choose('late'); await s.load();
-  assert.match(s.e['sequence-mode'].textContent, /comparable_visualization.*共用亮度範圍.*不是光度測量/);
+  assert.match(s.e['sequence-mode'].textContent, /comparable_visualization.*shared brightness range.*not a photometric/);
 });
 test('expired search disables loading and instructs explicit fresh search', async () => {
   const s = setup({ apiError: 'search_expired' }); await s.submit(); s.choose('early'); s.choose('late'); await s.load();
-  assert.match(s.e['epochs-status'].textContent, /search_expired.*重新查詢/); assert.equal(s.e['load-frames'].disabled, true); assert.equal(s.calls.length, 2);
+  assert.match(s.e['epochs-status'].textContent, /search_expired.*Search epochs again/); assert.equal(s.e['load-frames'].disabled, true); assert.equal(s.calls.length, 2);
 });
 test('missing cached PNG keeps slots and asks for requery without automatic retries', async () => {
   const s = setup({ pngError: true }); await s.submit(); s.choose('early'); s.choose('late'); await s.load();
-  assert.match(s.e['epoch-current'].textContent, /frame_not_found.*重新查詢/); assert.equal(s.e['epoch-slots'].children.length, 2); assert.equal(s.calls.length, 4);
+  assert.match(s.e['epoch-current'].textContent, /frame_not_found.*Search epochs again/); assert.equal(s.e['epoch-slots'].children.length, 2); assert.equal(s.calls.length, 4);
 });
 test('pagination keeps snapshot query even when form changed; fresh search revokes blob URLs', async () => {
   const s = setup({ page: true }); await s.submit(); s.choose('early'); s.choose('late'); await s.load();
   s.e.ra.value = '10'; await s.e['epochs-more'].events.click();
   assert.equal(JSON.parse(s.calls.at(-1).body).ra, 127.69444); assert.equal(JSON.parse(s.calls.at(-1).body).cursor, 'cursor');
-  await s.submit(); assert.equal(s.revoked.length, 2); assert.match(s.e['epoch-selection'].textContent, /已選 0/);
+  await s.submit(); assert.equal(s.revoked.length, 2); assert.match(s.e['epoch-selection'].textContent, /Selected 0/);
 });
 for (const [options, pattern] of [[{ malformed: true }, /JSON/], [{ network: true }, /CORS/]]) {
   test(`search error ${pattern} releases controls`, async () => { const s = setup(options); await s.submit(); assert.match(s.e['epochs-status'].textContent, pattern); assert.equal(s.e.search.disabled, false); assert.equal(s.timeouts.size, 0); });
 }
 test('API timeout is bounded and releases controls', async () => {
   const s = setup({ hang: true }); const pending = s.submit(); s.timeouts.values().next().value.fn(); await pending;
-  assert.match(s.e['epochs-status'].textContent, /逾時/); assert.equal(s.e.search.disabled, false); assert.equal(s.timeouts.size, 0);
+  assert.match(s.e['epochs-status'].textContent, /timed out/); assert.equal(s.e.search.disabled, false); assert.equal(s.timeouts.size, 0);
 });
-test('invalid coordinates issue no requests', async () => { const s = setup(); s.e.ra.value = '360'; await s.submit(); assert.equal(s.calls.length, 0); assert.match(s.e['epochs-status'].textContent, /座標/); });
+test('invalid coordinates issue no requests', async () => { const s = setup(); s.e.ra.value = '360'; await s.submit(); assert.equal(s.calls.length, 0); assert.match(s.e['epochs-status'].textContent, /coordinates/); });
 test('timeline sorts actual FITS UTC dates while retaining original backend slot identity', async () => {
   const s = setup({ reverseDates: true }); await s.submit(); s.choose('early'); s.choose('middle'); s.choose('late'); await s.load();
   assert.match(s.e['epoch-current'].textContent, /slot 2.*2025-01-01.*late/);

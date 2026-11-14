@@ -17,17 +17,26 @@ function chunk(type, data) {
   const body = Buffer.concat([Buffer.from(type), data]), size = Buffer.alloc(4), crc = Buffer.alloc(4);
   size.writeUInt32BE(data.length); crc.writeUInt32BE(crc32(body)); return Buffer.concat([size, body, crc]);
 }
-function png(index) {
+function normalization(index, scenario) {
+  const lo = scenario === 'comparable' ? 0 : index * .2;
+  const hi = scenario === 'comparable' ? 12 : 10 + index * 2;
+  return { lo, hi, denominator: Math.max(hi - lo, 1e-8), stretch: scenario === 'browse-linear' && index === 1 ? 'linear' : 'asinh', a: 10, rounding: 'nearest_even' };
+}
+function png(index, scenario) {
   const header = Buffer.alloc(13); header.writeUInt32BE(29, 0); header.writeUInt32BE(29, 4); header[8] = 8; header[9] = 6;
   const pixels = Buffer.alloc(29 * (1 + 29 * 4));
   for (let y = 0; y < 29; y++) for (let x = 0; x < 29; x++) {
     const at = y * 117 + 1 + x * 4;
-    const v = Math.round(220 * Math.exp(-((x - 14 - index) ** 2 + (y - 14) ** 2) / 5));
-    pixels[at] = pixels[at + 1] = pixels[at + 2] = v; pixels[at + 3] = 255;
+    const n = normalization(index, scenario);
+    const value = .3 + 10 * Math.exp(-((x - 14 - index) ** 2 + (y - 14) ** 2) / 5);
+    const fraction = Math.max(0, Math.min(1, (value - n.lo) / n.denominator));
+    const scaled = 255 * (n.stretch === 'linear' ? fraction : Math.asinh(n.a * fraction) / Math.asinh(n.a));
+    const lower = Math.floor(scaled), v = scaled - lower === .5 ? lower + lower % 2 : Math.round(scaled);
+    pixels[at] = pixels[at + 1] = pixels[at + 2] = v; pixels[at + 3] = x === y && x < 2 ? 0 : 255;
   }
   return Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), chunk('IHDR', header), chunk('IDAT', deflateSync(pixels)), chunk('IEND', Buffer.alloc(0))]);
 }
-export async function epochsFixture(req, res, scenario = 'failed') {
+export async function epochsFixture(req, res, scenario = 'failed', coordinates = {}) {
   const send = (data, status = 200) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(data)); };
   if (req.method === 'POST' && req.url === '/api/epochs/search') {
     let body = ''; for await (const part of req) body += part;
@@ -43,14 +52,14 @@ export async function epochsFixture(req, res, scenario = 'failed') {
     }
     const frames = input.product_ids.map((id, index) => {
       const p = products.find(p => p.product_id === id), failed = scenario === 'all-failed' || scenario === 'failed' && index === 1;
-      return { ...p, index, status: failed ? 'failed' : scenario === 'comparable' ? 'ready' : 'alignment_unqualified', alignment: { status: scenario === 'comparable' ? 'pass' : 'unverified' }, observation_utc: utc(p.t_min), time_source: 'sia_t_min', target_wavelength_um: failed ? null : .86, target_bandwidth_um: failed ? null : .021, image_url: failed ? null : `/api/epoch-frames/${sequenceId}/${index}.png`, error: failed ? { code: 'synthetic_failure', message: 'Intentional UI test failure; original exposure retained' } : null };
+      return { ...p, index, status: failed ? 'failed' : scenario === 'comparable' ? 'ready' : 'alignment_unqualified', alignment: { status: scenario === 'comparable' ? 'pass' : 'unverified' }, observation_utc: utc(p.t_min), time_source: 'sia_t_min', target_wavelength_um: failed ? null : .86, target_bandwidth_um: failed ? null : .021, normalization: failed || scenario === 'missing-normalization' ? null : normalization(index, scenario), image_url: failed ? null : `/api/epoch-frames/${sequenceId}/${index}.png`, error: failed ? { code: 'synthetic_failure', message: 'Intentional UI test failure; original exposure retained' } : null };
     });
-    send({ search_id: searchId, sequence_id: sequenceId, mode: scenario === 'comparable' ? 'comparable_visualization' : 'observation_browse', photometric_series: false, frames, normalization: { policy: 'SYNTHETIC_UI_FIXTURE_ONLY' }, expires_at: new Date(Date.now() + 600000).toISOString() }); return true;
+    send({ search_id: searchId, sequence_id: sequenceId, ...coordinates, mode: scenario === 'comparable' ? 'comparable_visualization' : 'observation_browse', photometric_series: false, frames, normalization: { policy: 'SYNTHETIC_UI_FIXTURE_ONLY', bunit: 'MJy/sr', lo: scenario === 'comparable' ? 0 : null, hi: scenario === 'comparable' ? 12 : null }, expires_at: new Date(Date.now() + 600000).toISOString() }); return true;
   }
   const match = req.url.match(new RegExp(`^/api/epoch-frames/${sequenceId}/([0-2])\\.png$`));
   if (req.method === 'GET' && match) {
     if (scenario === 'cache-miss') send({ error: { code: 'frame_not_found', message: 'Synthetic missing PNG cache' } }, 404);
-    else { res.writeHead(200, { 'Content-Type': 'image/png' }); res.end(png(Number(match[1]))); }
+    else { res.writeHead(200, { 'Content-Type': 'image/png' }); res.end(png(Number(match[1]), scenario)); }
     return true;
   }
   return false;

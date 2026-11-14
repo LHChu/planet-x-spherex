@@ -3,10 +3,10 @@
   "use strict";
   const $ = id => document.getElementById(id);
   let context, snapshot = null, query = null, base = "", cursor = null, working = false;
-  let products = [], selected = new Set(), slots = [], position = 0, timer = null;
+  let products = [], selected = new Set(), slots = [], position = 0, timer = null, wcsAxes = null, sequenceDisplay = null;
   const active = () => $("explorer-mode").value === "epochs";
-  const sources = p => (p.source_collections || [p.obs_collection]).filter(Boolean).join(", ") || "未提供";
-  const mjdTime = p => Number.isFinite(p.t_min) ? new Date((p.t_min - 40587) * 86400000).toISOString() : "未提供時間";
+  const sources = p => (p.source_collections || [p.obs_collection]).filter(Boolean).join(", ") || "Not available";
+  const mjdTime = p => Number.isFinite(p.t_min) ? new Date((p.t_min - 40587) * 86400000).toISOString() : "Time not available";
   const date = p => p.observation_utc || mjdTime(p);
   const order = (a, b) => {
     const time = p => Number.isFinite(Date.parse(p.observation_utc)) ? Date.parse(p.observation_utc) : Number.isFinite(p.t_min) ? (p.t_min - 40587) * 86400000 : Infinity;
@@ -45,17 +45,18 @@
   }
   function pause() {
     clearInterval(timer); timer = null;
-    $("epoch-play").textContent = "播放"; $("epoch-play").setAttribute("aria-pressed", "false");
+    $("epoch-play").textContent = "Play"; $("epoch-play").setAttribute("aria-pressed", "false");
   }
   function clearFrames() {
     pause();
     for (const slot of slots) if (slot.url) URL.revokeObjectURL(slot.url);
     slots = []; position = 0;
-    $("epoch-viewport").replaceChildren(); $("epoch-player").hidden = true;
+    wcsAxes = null; $("epoch-image").replaceChildren(); $("epoch-axes").replaceChildren(); $("epoch-player").hidden = true;
+    sequenceDisplay = null; $("epoch-colorbar").replaceChildren();
   }
   function controls() {
     for (const id of ["search", "environment", "api-url", "detector", "explorer-mode", "ra", "dec", "radius"]) $(id).disabled = working;
-    $("search").textContent = working ? "處理多時期資料中…" : active() ? "查詢觀測時期" : "搜尋 NASA 影像 ↗";
+    $("search").textContent = working ? "Processing multi-epoch data…" : active() ? "Search epochs" : "Search NASA images ↗";
     $("load-frames").disabled = working || !snapshot || selected.size < 2;
     $("epochs-more").disabled = working || !cursor;
     for (const count of [2, 3]) $("select-first-" + count).disabled = working || firstProducts(count).length !== count;
@@ -75,12 +76,12 @@
         renderProducts(); controls();
       });
       cell.append(check); tr.append(cell);
-      for (const value of [date(p), p.detector == null ? "未知" : `D${p.detector}`, `${sources(p)} · ${p.obs_id || "未知曝光（無法選取）"} · ${p.product_id} · ${p.frame_status || "not_requested"} · ${p.calibration_status || ""} · ${(p.warnings || []).join(", ")}`]) {
+      for (const value of [date(p), p.detector == null ? "Unknown" : `D${p.detector}`, `${sources(p)} · ${p.obs_id || "Unknown exposure (unavailable for selection)"} · ${p.product_id} · ${p.frame_status || "not_requested"} · ${p.calibration_status || ""} · ${(p.warnings || []).join(", ")}`]) {
         const td = document.createElement("td"); td.textContent = value; tr.append(td);
       }
       $("epoch-products").append(tr);
     }
-    $("epoch-selection").textContent = `已選 ${selected.size} / 3；顯示 ${visible.length} 個可選曝光。每個曝光保留一筆代表產品，無法選取的候選已隱藏；取消勾選可顯示其他候選。快速選取依可見清單第一筆的 detector，重選前 2／3 張，不會自動載入。仍需按 Load frames 才更新播放器。`;
+    $("epoch-selection").textContent = `Selected ${selected.size} / 3; showing ${visible.length} available exposures. One product represents each exposure. Unavailable candidates are hidden; deselect a product to show other candidates. Quick selection replaces the selection with the first 2 or 3 exposures on the first visible product’s Detector. Select Load frames to update the player.`;
     $("epochs-more").hidden = !cursor;
   }
   async function request(path, body, png = false) {
@@ -89,19 +90,19 @@
       const response = await fetch(base + path, { method: png ? "GET" : "POST", headers: png ? {} : { "Content-Type": "application/json" }, ...(png ? {} : { body: JSON.stringify(body) }), signal: controller.signal, credentials: "omit" });
       if (png && response.ok) return await response.blob();
       let data;
-      try { data = await response.json(); } catch { throw Error(`API 未回傳有效 JSON（HTTP ${response.status}）。`); }
+      try { data = await response.json(); } catch { throw Error(`The API returned invalid JSON (HTTP ${response.status}).`); }
       if (!response.ok) {
         const code = data.error?.code || "request_failed", retry = response.headers.get("Retry-After");
-        const error = Error(`${data.error?.message || "請求失敗"}（HTTP ${response.status} / ${code}）${retry ? `；Retry-After: ${retry}，請等待後手動重試。` : ""}`);
+        const error = Error(`${data.error?.message || "Request failed"} (HTTP ${response.status} / ${code})${retry ? `; Retry-After: ${retry}. Wait, then retry manually.` : ""}`);
         error.code = code; throw error;
       }
       return data;
     } finally { clearTimeout(timeout); }
   }
   function message(error) {
-    if (["search_expired", "invalid_cursor", "frame_not_found"].includes(error.code)) return `${error.message}；查詢或影格快取已失效，請重新查詢觀測時期，再選取產品並按 Load frames。`;
-    if (error.name === "AbortError") return "等待逾時；後端工作可能仍在執行，請稍後手動重試。";
-    if (error instanceof TypeError) return "無法連線 API，請檢查後端網址、網路與 CORS。";
+    if (["search_expired", "invalid_cursor", "frame_not_found"].includes(error.code)) return `${error.message}; the search or frame cache has expired. Search epochs again, select products, then select Load frames.`;
+    if (error.name === "AbortError") return "The request timed out. Backend processing may still be running. Retry manually later.";
+    if (error instanceof TypeError) return "Could not connect to the API. Check the backend URL, network, and CORS settings.";
     return error.message;
   }
   async function search(more = false) {
@@ -116,14 +117,14 @@
         base = context.apiBase(); const { detector, ...coordinates } = context.payload();
         query = { ...coordinates, ...(detector ? { detectors: [detector] } : {}), limit: 100 }; context.persist();
       }
-      working = true; controls(); renderProducts(); status("查詢觀測時期 metadata；不下載 FITS…");
+      working = true; controls(); renderProducts(); status("Searching epoch metadata without downloading FITS…");
       const data = await request("/api/epochs/search", { ...query, ...(more ? { cursor } : {}) });
-      if (!data.search_id || !Array.isArray(data.products) || (more && data.search_id !== snapshot)) throw Error("API 搜尋回應缺少產品或快照不一致，請重新查詢。");
+      if (!data.search_id || !Array.isArray(data.products) || (more && data.search_id !== snapshot)) throw Error("The API search response is missing products or has an inconsistent snapshot. Search again.");
       snapshot = data.search_id; cursor = data.pagination?.next_cursor || null;
       const merged = new Map(products.map(p => [p.product_id, p]));
       data.products.forEach(p => merged.set(p.product_id, p)); products = [...merged.values()];
-      $("epochs-sources").textContent = `查詢快照：RA ${query.ra} / Dec ${query.dec} / radius ${query.radius_deg}° · ${base}。來源：${(data.collections || []).map(c => `${c.name}: ${c.status}${c.truncated ? " (truncated)" : ""}${c.error ? ` ${JSON.stringify(c.error)}` : ""}`).join("；")}。快照到期：${data.expires_at || "未提供"}。${data.complete === false ? "查詢不完整，僅顯示已取得的候選。" : ""}`;
-      status(products.length ? `已取得 ${products.length} 個產品${cursor ? "，還有更多時期" : ""}；請手動選取。` : "此範圍沒有可用觀測產品。");
+      $("epochs-sources").textContent = `Search snapshot: RA ${query.ra} / Dec ${query.dec} / radius ${query.radius_deg}° · ${base}. Sources: ${(data.collections || []).map(c => `${c.name}: ${c.status}${c.truncated ? " (truncated)" : ""}${c.error ? ` ${JSON.stringify(c.error)}` : ""}`).join("; ")}. Snapshot expires: ${data.expires_at || "Not available"}. ${data.complete === false ? "Search incomplete; only retrieved candidates are shown." : ""}`;
+      status(products.length ? `Found ${products.length} products${cursor ? "; more epochs are available" : ""}. Select products manually.` : "No observation products are available in this area.");
     } catch (error) {
       if (["search_expired", "invalid_cursor"].includes(error.code)) { snapshot = null; cursor = null; }
       status(message(error), true);
@@ -131,7 +132,7 @@
   }
   function describe(slot) {
     const f = slot.frame;
-    return `slot ${f.index} · ${date(f)} UTC · ${f.time_source || "sia_t_min"} · D${f.detector} · λ ${f.target_wavelength_um ?? "未提供"} μm / bandwidth ${f.target_bandwidth_um ?? "未提供"} μm · ${sources(f)} · ${f.obs_id} · ${f.product_id} · ${f.status} · alignment: ${f.alignment?.status || "未評估"}${slot.error ? ` · ${slot.error}` : ""}`;
+    return `slot ${f.index} · ${date(f)} UTC · ${f.time_source || "sia_t_min"} · D${f.detector} · λ ${f.target_wavelength_um ?? "Not available"} μm / bandwidth ${f.target_bandwidth_um ?? "Not available"} μm · ${sources(f)} · ${f.obs_id} · ${f.product_id} · ${f.status} · alignment: ${f.alignment?.status || "Not assessed"}${slot.error ? ` · ${slot.error}` : ""}`;
   }
   function zoom() {
     const factor = Number($("epoch-zoom").value);
@@ -140,6 +141,19 @@
       slot.image.style.width = `${slot.image.naturalWidth * factor}px`;
       slot.image.style.height = `${slot.image.naturalHeight * factor}px`;
     }
+    const current = slots[position];
+    if (current) {
+      const [height, width] = current.image ? [current.image.naturalHeight, current.image.naturalWidth] : wcsAxes?.shape_yx || [29, 29];
+      $("epoch-image").style.width = `${width * factor}px`; $("epoch-image").style.height = `${height * factor}px`;
+      const axes = window.SpherexAxes.render($("epoch-axes"), wcsAxes, width, height, factor);
+      $("epoch-image").style.left = `${axes.margin.left}px`; $("epoch-image").style.top = `${axes.margin.top}px`;
+      const scale = current.image ? window.SpherexColorBar.epoch(sequenceDisplay, current.frame) : null;
+      const note = sequenceDisplay?.mode === "comparable_visualization"
+        ? "Shared mapping; visual comparison only, not photometry. Transparent/masked pixels excluded."
+        : "Per-frame mapping; do not compare brightness between frames. Transparent/masked pixels excluded.";
+      const size = window.SpherexColorBar.render($("epoch-colorbar"), scale, axes, note);
+      $("epoch-stage").style.width = `${size.width}px`; $("epoch-stage").style.height = `${size.height}px`;
+    }
   }
   function show(next) {
     if (!slots.length) return;
@@ -147,26 +161,26 @@
     $("epoch-time").value = String(position);
     $("epoch-position").textContent = `${position + 1} / ${slots.length} · ${date(slots[position].frame)}`;
     $("epoch-current").textContent = describe(slots[position]);
-    $("epoch-viewport").replaceChildren(slots[position].image || slots[position].placeholder);
+    $("epoch-image").replaceChildren(slots[position].image || slots[position].placeholder);
     zoom();
   }
   function play() {
     pause(); if (slots.length < 2 || !slots.some(s => s.image)) return;
-    $("epoch-play").textContent = "暫停"; $("epoch-play").setAttribute("aria-pressed", "true");
+    $("epoch-play").textContent = "Pause"; $("epoch-play").setAttribute("aria-pressed", "true");
     timer = setInterval(() => show(position + 1), Number($("epoch-speed").value));
   }
   async function loadPng(frame, sequenceId) {
-    if (!frame.image_url) throw Error(`${frame.error?.code || "frame_failed"}: ${frame.error?.message || "此 slot 沒有 PNG"}`);
+    if (!frame.image_url) throw Error(`${frame.error?.code || "frame_failed"}: ${frame.error?.message || "No PNG is available for this slot"}`);
     const path = new URL(frame.image_url, base).pathname;
-    if (path !== `/api/epoch-frames/${sequenceId}/${frame.index}.png` || !/^[0-9a-f]{32}$/.test(sequenceId)) throw Error("API 回傳無效的影格 PNG 路徑。");
+    if (path !== `/api/epoch-frames/${sequenceId}/${frame.index}.png` || !/^[0-9a-f]{32}$/.test(sequenceId)) throw Error("The API returned an invalid frame PNG path.");
     const blob = await request(path, null, true), url = URL.createObjectURL(blob), img = document.createElement("img");
-    img.alt = `後端 WCS 重投影 PNG · ${date(frame)} · ${frame.obs_id}`;
+    img.alt = `PNG reprojected to WCS by the backend · ${date(frame)} · ${frame.obs_id}`;
     try {
       await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => { cleanup(); reject(Error("PNG 解碼逾時，請重新查詢。")); }, 30000);
+        const timeout = setTimeout(() => { cleanup(); reject(Error("PNG decoding timed out. Search again.")); }, 30000);
         function cleanup() { clearTimeout(timeout); img.onload = null; img.onerror = null; }
         img.onload = () => { cleanup(); resolve(); };
-        img.onerror = () => { cleanup(); reject(Error("PNG 無法解碼，請重新查詢。")); };
+        img.onerror = () => { cleanup(); reject(Error("Could not decode the PNG. Search again.")); };
         img.src = url;
       });
       return { image: img, url };
@@ -176,28 +190,30 @@
     if (working || !snapshot || selected.size < 2 || selected.size > 3) return;
     const chosen = products.filter(p => selected.has(p.product_id)).sort(order);
     if (chosen.length !== selected.size || chosen.some(p => !eligible(p) || p.detector !== chosen[0].detector) || new Set(chosen.map(exposure)).size !== chosen.length) return;
-    clearFrames(); working = true; controls(); renderProducts(); status("載入指定影格；後端可能需要數分鐘處理 FITS…");
+    clearFrames(); working = true; controls(); renderProducts(); status("Loading selected frames. FITS processing may take a few minutes…");
     try {
       const data = await request("/api/epoch-frames", { search_id: snapshot, product_ids: chosen.map(p => p.product_id) });
-      if (data.search_id !== snapshot || !Array.isArray(data.frames) || data.frames.length !== chosen.length || data.frames.some((f, i) => f.product_id !== chosen[i].product_id || f.index !== i)) throw Error("影格 API 回應與指定 slot 不一致，請重新查詢。");
+      if (data.search_id !== snapshot || !Array.isArray(data.frames) || data.frames.length !== chosen.length || data.frames.some((f, i) => f.product_id !== chosen[i].product_id || f.index !== i)) throw Error("The frame API response does not match the selected slots. Search again.");
+      wcsAxes = data.wcs_axes;
+      sequenceDisplay = data;
       slots = await Promise.all(data.frames.map(async (frame, i) => {
         const slot = { frame: { ...chosen[i], ...frame } };
         try { Object.assign(slot, await loadPng(frame, data.sequence_id)); }
         catch (error) {
           slot.error = message(error); slot.placeholder = document.createElement("p");
-          slot.placeholder.textContent = `此 slot 無法顯示：${slot.error}`;
+          slot.placeholder.textContent = `Cannot display this slot: ${slot.error}`;
         }
         return slot;
       }));
       slots.sort((a, b) => order(a.frame, b.frame));
-      $("sequence-mode").textContent = data.mode === "comparable_visualization" ? "comparable_visualization · 後端判定可比較視覺化，共用亮度範圍；不是光度測量序列。" : "observation_browse · 逐張獨立亮度範圍，僅供觀測瀏覽；不可比較亮度或解讀為光變。";
-      $("sequence-details").textContent = `影格快取到期：${data.expires_at || "未提供"}（可能提前淘汰）；已載入的 PNG 可繼續離線播放。Normalization: ${data.normalization?.policy || "未提供"}。`;
+      $("sequence-mode").textContent = data.mode === "comparable_visualization" ? "comparable_visualization · The backend permits visual comparison using a shared brightness range. This is not a photometric sequence." : "observation_browse · Each frame uses its own brightness range. For observation browsing only; do not compare brightness or infer variability.";
+      $("sequence-details").textContent = `Frame cache expires: ${data.expires_at || "Not available"} (may be evicted early). Loaded PNGs remain available for offline playback. Normalization: ${data.normalization?.policy || "Not available"}.`;
       $("epoch-raw").textContent = JSON.stringify(data, null, 2);
       $("epoch-slots").replaceChildren();
       slots.forEach(slot => { const li = document.createElement("li"); li.textContent = describe(slot); $("epoch-slots").append(li); });
       $("epoch-time").max = String(slots.length - 1); $("epoch-player").hidden = false;
       $("epoch-play").disabled = !slots.some(s => s.image); show(0);
-      status(`保留 ${slots.length} 個 slot，${slots.filter(s => s.image).length} 張 PNG 已載入。播放／拖動不再發出請求。`);
+      status(`Retained ${slots.length} slots; loaded ${slots.filter(s => s.image).length} PNGs. Playback and scrubbing make no additional requests.`);
     } catch (error) {
       if (error.code === "search_expired") { snapshot = null; cursor = null; }
       status(message(error), true);

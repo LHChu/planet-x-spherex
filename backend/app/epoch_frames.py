@@ -25,6 +25,7 @@ from .epochs import MetadataBudget, mjd_utc, utc
 from .frame_math import bilinear, propagate_flags, wavelength, peaks, residuals
 from .nasa_requests import BudgetStopped, MAX_ATTEMPTS, REQUEST_SECONDS, retry_after_seconds
 from .service import PreviewError, json_safe, preview_directory, is_timeout
+from .wcs_axes import axes_from_wcs
 
 log = logging.getLogger(__name__)
 SIZE, SCALE = 29, 6.15
@@ -319,7 +320,8 @@ def create_frames(snapshot, selected):
         else:
             values = data["aligned_image"][data["valid_mask"]]
             low, high = map(float,np.percentile(values,[1,99])) if values.size else (0.,1.)
-        frames[i]["normalization"] = {"lo":low,"hi":high,"stretch":"asinh","a":10}
+        frames[i]["normalization"] = {"lo":low,"hi":high,"stretch":"asinh","a":10,
+                                      "denominator":max(high-low,1e-8),"rounding":"nearest_even"}
         frames[i]["status"] = "ready" if frames[i]["alignment"]["status"] == "pass" else "alignment_unqualified"
         blobs[f"{i}.png"] = png(data["aligned_image"],low,high)
         raw = io.BytesIO()
@@ -329,6 +331,7 @@ def create_frames(snapshot, selected):
                      "complete":success == len(selected), "mode":"comparable_visualization" if comparable else "observation_browse",
                      "photometric_series":False, "wavelength_compatible":bool(wavelength_ok), "calibration_compatible":bool(calibration_ok),
                      "grid":{"header":dict(target_grid.to_header()),"shape_yx":[SIZE,SIZE],"pixel_scale_arcsec":SCALE},
+                     "wcs_axes": axes_from_wcs(target_grid, (SIZE, SIZE), "Phase 4.4 ICRS TAN output grid"),
                      "normalization":normalization, "pair_checks":pair_checks, "frames":frames,
                      "counts":{"requested":len(selected),"reprojected":success,"failed":len(selected)-success},
                      "nasa_request_count":budget.requests,

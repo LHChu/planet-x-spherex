@@ -18,6 +18,7 @@ from PIL import Image
 from backend.app import epoch_frames as m
 from backend.app.epochs import normalize
 from backend.app.main import create_app
+from backend.app.wcs_axes import axes_from_wcs
 
 ROOT = Path(__file__).resolve().parents[2]
 RA, DEC = 127.69444, -39.1776
@@ -109,12 +110,20 @@ class FrameApiTests(unittest.TestCase):
         self.assertEqual(b["counts"]["reprojected"],2)
         self.assertEqual(b["nasa_request_count"],2)
         self.assertEqual(b["grid"]["shape_yx"],[29,29])
+        self.assertEqual(b["wcs_axes"], axes_from_wcs(m.grid(RA, DEC), (29, 29), "Phase 4.4 ICRS TAN output grid"))
         self.assertEqual(b["frames"][0]["normalization"],b["frames"][1]["normalization"])
+        for frame in b["frames"]:
+            n = frame["normalization"]
+            self.assertEqual(n["denominator"], max(n["hi"] - n["lo"], 1e-8))
+            self.assertEqual(n["rounding"], "nearest_even")
         f = b["frames"][0]
         self.assertEqual(f["observation_utc"],"2025-04-29T14:18:55.983Z")
         self.assertAlmostEqual(f["target_wavelength_um"],.86)
         artifact = self.client.get(f["data_url"])
         with np.load(io.BytesIO(artifact.content),allow_pickle=False) as a:
+            persisted_grid = m.WCS(fits.Header.fromstring(str(a["grid_header"])))
+            for tick in b["wcs_axes"]["ra_ticks"]:
+                self.assertAlmostEqual(tick["degrees"], persisted_grid.all_pix2world([[tick["pixel"], -.5]], 0)[0, 0], places=10)
             self.assertTrue(np.isnan(a["native_image"][0,0]))
             self.assertFalse(a["native_valid"][1,1])
             self.assertTrue(a["native_valid"][14,14])  # SOURCE is informational

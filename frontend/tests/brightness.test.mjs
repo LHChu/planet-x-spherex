@@ -23,6 +23,7 @@ test('linear/asinh operate on raw values, flip FITS y, preserve null and quality
 
 test('invalid ranges cannot replace the last good display', () => {
   for (const [lo, hi] of [[0, 0], [1, 0], [NaN, 1], [0, Infinity]]) {
-    assert.throws(() => rgba({ shape: [1, 1], values: [0], valid: [true] }, lo, hi));
+    assert.throws(() => rgba({ shape: [1, 1], values: [0], valid: [true] }, lo, hi), /maximum must exceed the minimum.*finite/);
   }
+  assert.throws(() => rgba({ shape: [1, 1], values: [0], valid: [true] }, 0, 1, 'unsupported'), /Unknown stretch method/);
 });

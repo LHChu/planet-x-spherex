@@ -1,105 +1,107 @@
 <!doctype html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="以天球座標探索 NASA SPHEREx 紅外線觀測影像。">
+  <meta name="description" content="Explore NASA SPHEREx infrared observations by sky coordinates.">
   <title>Planet X · SPHEREx Explorer</title>
   <link rel="stylesheet" href="./styles.css">
   <script src="./config.js" defer></script>
   <script src="./brightness.js" defer></script>
+  <script src="./wcs-axes.js" defer></script>
+  <script src="./color-bar.js" defer></script>
   <script src="./epochs.js" defer></script>
   <script src="./app.js" defer></script>
 </head>
 <body>
   <header><a class="brand" href="./">PLANET X <span>/ SPHEREx</span></a><span class="badge">NASA SPACE APPS · PHASE 4.5</span></header>
   <main>
-    <section class="intro"><p class="eyebrow">INFRARED SKY EXPLORER</p><h1>從一個座標，<br>看見紅外線宇宙。</h1><p>探索 NASA SPHEREx 觀測資料，檢視天空中的微小光點。</p></section>
+    <section class="intro"><p class="eyebrow">INFRARED SKY EXPLORER</p><h1>Start with coordinates.<br>Explore the infrared universe.</h1><p>Explore NASA SPHEREx observations and examine faint points of light across the sky.</p></section>
     <div class="workspace">
       <aside class="panel">
-        <h2><span class="step">01</span> 指定觀測位置</h2>
-        <label for="explorer-mode">探索模式</label>
-        <select id="explorer-mode"><option value="preview">Preview · 單張影像</option><option value="epochs">Multi-epoch · 多時期</option></select>
+        <h2><span class="step">01</span> Choose a sky position</h2>
+        <label for="explorer-mode">Explorer mode</label>
+        <select id="explorer-mode"><option value="preview">Preview · Single image</option><option value="epochs">Multi-epoch · Multiple observations</option></select>
         <form id="search-form">
-          <label for="ra">赤經 RA <small>十進位度數 · 0 ≤ RA &lt; 360</small></label>
+          <label for="ra">Right ascension (RA) <small>Decimal degrees · 0 ≤ RA &lt; 360</small></label>
           <input id="ra" name="ra" type="number" step="any" min="0" max="359.99999999999994" value="127.69444" required>
-          <label for="dec">赤緯 Dec <small>十進位度數 · −90 至 90</small></label>
+          <label for="dec">Declination (Dec) <small>Decimal degrees · −90 to 90</small></label>
           <input id="dec" name="dec" type="number" step="any" min="-90" max="90" value="-39.17760" required>
-          <label for="radius">搜尋半徑 <small>度 · 大於 0，最大 0.08333333333333333</small></label>
+          <label for="radius">Search radius <small>Degrees · Greater than 0, up to 0.08333333333333333</small></label>
           <input id="radius" name="radius" type="number" step="any" min="0.000000000000001" max="0.08333333333333333" value="0.01" required>
-          <label for="detector">SPHEREx detector</label>
+          <label for="detector">SPHEREx Detector</label>
           <select id="detector" name="detector"><option value="">Auto</option><option value="1">D1</option><option value="2">D2</option><option value="3">D3</option><option value="4">D4</option><option value="5">D5</option><option value="6">D6</option></select>
-          <p class="hint">半徑僅影響搜尋範圍。Cutout 固定邊長為 3 arcmin，像素尺寸依 NASA 回傳為準。</p>
-          <button id="search" class="primary" type="submit">搜尋 NASA 影像 <span aria-hidden="true">↗</span></button>
+          <p class="hint">The radius controls the search area only. Cutouts have a fixed side length of 3 arcmin; pixel dimensions depend on the NASA response.</p>
+          <button id="search" class="primary" type="submit">Search NASA images <span aria-hidden="true">↗</span></button>
         </form>
         <details class="connection" open>
-          <summary>API 連線設定</summary>
-          <label for="environment">後端環境</label>
-          <select id="environment"><option value="local">本機 localhost</option><option value="render">Render HTTPS</option></select>
-          <label for="api-url">API 基底網址</label>
+          <summary>API connection settings</summary>
+          <label for="environment">Backend environment</label>
+          <select id="environment"><option value="local">Local (localhost)</option><option value="render">Render HTTPS</option></select>
+          <label for="api-url">API base URL</label>
           <input id="api-url" type="url" spellcheck="false" placeholder="https://your-service.onrender.com" aria-describedby="connection-note">
-          <p id="connection-note" class="hint">設定會保存在此瀏覽器。GitHub Pages 請使用 Render HTTPS；本機測試請先啟動 FastAPI。</p>
+          <p id="connection-note" class="hint">Settings are saved in this browser. Use Render HTTPS on GitHub Pages. For local testing, start FastAPI first.</p>
         </details>
       </aside>
       <section id="preview-panel" class="panel viewer" aria-labelledby="viewer-title">
-        <div class="viewer-header"><h2 id="viewer-title"><span class="step">02</span> 觀測影像</h2><span id="image-size" class="mono">PNG · —</span></div>
+        <div class="viewer-header"><h2 id="viewer-title"><span class="step">02</span> Observation image</h2><span id="image-size" class="mono">PNG · —</span></div>
         <div class="toolbar">
-          <div class="modes" role="group" aria-label="影像顯示模式"><button id="black" type="button" aria-pressed="true" disabled>黑底白光</button><button id="white" type="button" aria-pressed="false" disabled>白底黑光</button></div>
-          <label class="zoom-label" for="zoom">縮放 <output id="zoom-value" for="zoom">12×</output></label><input id="zoom" type="range" min="1" max="32" value="12" disabled>
+          <div class="modes" role="group" aria-label="Image display mode"><button id="black" type="button" aria-pressed="true" disabled>White on black</button><button id="white" type="button" aria-pressed="false" disabled>Black on white</button></div>
+          <label class="zoom-label" for="zoom">Zoom <output id="zoom-value" for="zoom">12×</output></label><input id="zoom" type="range" min="1" max="32" value="12" disabled>
         </div>
         <fieldset id="brightness" hidden>
-          <legend>顯示亮度範圍 · MJy/sr</legend>
-          <canvas id="histogram" width="640" height="140" role="img" aria-label="原始有效 IMAGE 像素的一維 histogram；橫軸 MJy/sr，縱軸像素數"></canvas>
+          <legend>Display brightness range · MJy/sr</legend>
+          <canvas id="histogram" width="640" height="140" role="img" aria-label="Histogram of all valid raw IMAGE pixels; horizontal axis: MJy/sr; vertical axis: pixel count"></canvas>
           <p id="histogram-range" class="hint"></p>
-          <label for="stretch">Stretch</label><select id="stretch"><option value="linear">Linear（測試預設）</option><option value="asinh">Asinh (10x)</option></select>
-          <label for="minimum">最小值 · MJy/sr</label><input id="minimum" type="range" step="any"><input id="minimum-number" aria-label="最小值 MJy/sr" type="number" step="any">
-          <label for="maximum">最大值 · MJy/sr</label><input id="maximum" type="range" step="any"><input id="maximum-number" aria-label="最大值 MJy/sr" type="number" step="any">
-          <label><input id="quality-overlay" type="checkbox">標示有效但帶 FLAGS 的像素（橘色）</label>
-          <button id="reset-brightness" type="button">重設亮度</button>
+          <label for="stretch">Stretch</label><select id="stretch"><option value="linear">Linear (default)</option><option value="asinh">Asinh (10x)</option></select>
+          <label for="minimum">Minimum · MJy/sr</label><input id="minimum" type="range" step="any"><input id="minimum-number" aria-label="Minimum MJy/sr" type="number" step="any">
+          <label for="maximum">Maximum · MJy/sr</label><input id="maximum" type="range" step="any"><input id="maximum-number" aria-label="Maximum MJy/sr" type="number" step="any">
+          <label><input id="quality-overlay" type="checkbox">Highlight valid pixels with FLAGS (orange)</label>
+          <button id="reset-brightness" type="button">Reset brightness</button>
           <p id="brightness-status" class="hint" role="status"></p>
-          <p class="hint">Histogram 使用完整有效原始像素，亮度調整不會改變分布或 FITS。無效像素透明；FLAGS 品質排除持續生效。橘色只標示品質資訊，不代表亮度。</p>
-          <p class="hint">WCS 位置代表輸入座標，並未校正天體自行運動；須搭配座標參考日期與實際觀測日期判讀，影像內不保證能辨識目標。</p>
+          <p class="hint">The histogram includes all valid raw pixels. Brightness adjustments do not change the distribution or FITS data. Invalid pixels are transparent; FLAGS quality exclusions remain in effect. Orange indicates quality information only, not brightness.</p>
+          <p class="hint">The WCS position marks the input coordinates without correcting for proper motion. Interpret it using the coordinate reference epoch and actual observation date. The target may not be identifiable in the image.</p>
         </fieldset>
         <p id="display-note" class="hint"></p>
-        <p id="status" role="status" aria-live="polite" data-state="idle">輸入座標，開始探索。</p>
-        <div id="viewport" class="viewport" tabindex="0" role="region" aria-label="可捲動的影像檢視區">
-          <div id="placeholder"><span class="crosshair" aria-hidden="true">⊕</span><p>等待觀測資料</p><small>NASA / IRSA · SPHEREx</small></div>
-          <img id="preview" alt="" hidden>
+        <p id="status" role="status" aria-live="polite" data-state="idle">Enter coordinates to start exploring.</p>
+        <div id="viewport" class="viewport" tabindex="0" role="region" aria-label="Scrollable image viewer">
+          <div id="placeholder"><span class="crosshair" aria-hidden="true">⊕</span><p>Waiting for observations</p><small>NASA / IRSA · SPHEREx</small></div>
+          <div id="preview-stage" class="wcs-stage" hidden><img id="preview" class="wcs-image" alt="" hidden><div id="preview-axes" class="wcs-axes" role="group"></div><div id="preview-colorbar" class="colorbar" role="group" aria-label="Surface Brightness (MJy/sr)"></div></div>
         </div>
-        <p class="hint viewer-note">以原始像素放大顯示；放大不會增加影像細節。超出範圍時可捲動檢視。</p>
-        <div id="info" hidden><h3>觀測資訊</h3><dl id="metadata"></dl><details><summary>完整 API metadata</summary><pre id="raw-metadata"></pre></details></div>
+        <p class="hint viewer-note">Zoom enlarges the original pixels without adding detail. Scroll to view areas outside the viewport.</p>
+        <div id="info" hidden><h3>Observation details</h3><dl id="metadata"></dl><details><summary>Full API metadata</summary><pre id="raw-metadata"></pre></details></div>
       </section>
       <section id="epochs-panel" class="panel viewer" aria-labelledby="epochs-title" hidden>
-        <h2 id="epochs-title">Multi-epoch · 多時期觀測</h2>
-        <p class="hint">先查詢 metadata，再選同一 detector 的 2～3 個不同曝光產品。只有按下 Load frames 才下載 FITS 並由後端重投影至共同 WCS 格網。</p>
-        <p id="epochs-status" role="status" aria-live="polite">輸入座標並查詢可用時期。</p>
+        <h2 id="epochs-title">Multi-epoch observations</h2>
+        <p class="hint">Search metadata, then select 2–3 products from distinct exposures on the same Detector. Select Load frames to download FITS data and reproject it onto a common WCS grid on the backend.</p>
+        <p id="epochs-status" role="status" aria-live="polite">Enter coordinates to search for available epochs.</p>
         <p id="epochs-sources" class="hint"></p>
-        <div class="epoch-table"><table><thead><tr><th>選取</th><th>觀測時間（UTC / SIA）</th><th>Detector</th><th>來源 / 產品 / 狀態</th></tr></thead><tbody id="epoch-products"></tbody></table></div>
-        <button id="epochs-more" type="button" hidden>更多時期（同一查詢快照）</button>
-        <p id="epoch-selection" class="hint">已選 0 / 3</p>
-        <div class="toolbar" role="group" aria-label="快速選取可見曝光">
+        <div class="epoch-table"><table><thead><tr><th>Select</th><th>Observation time (UTC / SIA)</th><th>Detector</th><th>Source / Product / Status</th></tr></thead><tbody id="epoch-products"></tbody></table></div>
+        <button id="epochs-more" type="button" hidden>More epochs (same search snapshot)</button>
+        <p id="epoch-selection" class="hint">Selected 0 / 3</p>
+        <div class="toolbar" role="group" aria-label="Quick selection of visible exposures">
           <button id="select-first-2" type="button" disabled>Select first 2</button>
           <button id="select-first-3" type="button" disabled>Select first 3</button>
         </div>
         <button id="load-frames" class="primary" type="button" disabled>Load frames</button>
         <div id="epoch-player" hidden>
           <p id="sequence-mode"></p>
-          <p class="hint">觀測為非等時間間隔；滑桿按影格順序排列，播放速度不代表真實時間流逝。僅供視覺檢視，不提供光變推論。</p>
+          <p class="hint">Observations are unevenly spaced in time. The slider follows frame order; playback speed does not represent elapsed observation time. Use for visual inspection only, not to infer variability.</p>
           <p id="sequence-details" class="hint"></p>
           <div class="toolbar">
-            <button id="epoch-prev" type="button">上一張</button><button id="epoch-play" type="button" aria-pressed="false">播放</button><button id="epoch-next" type="button">下一張</button>
-            <label for="epoch-speed">播放速度</label><select id="epoch-speed"><option value="1000">1 fps</option><option value="500">2 fps</option><option value="2000">0.5 fps</option></select>
+            <button id="epoch-prev" type="button">Previous</button><button id="epoch-play" type="button" aria-pressed="false">Play</button><button id="epoch-next" type="button">Next</button>
+            <label for="epoch-speed">Playback speed</label><select id="epoch-speed"><option value="1000">1 fps</option><option value="500">2 fps</option><option value="2000">0.5 fps</option></select>
           </div>
-          <label for="epoch-time">時間軸 <output id="epoch-position"></output></label><input id="epoch-time" type="range" min="0" max="0" value="0" step="1">
-          <div id="epoch-viewport" class="viewport" tabindex="0" aria-label="後端共同 WCS 格網 PNG"></div>
-          <label for="epoch-zoom">顯示縮放（不改變 WCS）</label><input id="epoch-zoom" type="range" min="1" max="32" value="12"><output id="epoch-zoom-value">12×</output>
+          <label for="epoch-time">Timeline <output id="epoch-position"></output></label><input id="epoch-time" type="range" min="0" max="0" value="0" step="1">
+          <div id="epoch-viewport" class="viewport" tabindex="0" aria-label="Backend PNG on a common WCS grid"><div id="epoch-stage" class="wcs-stage"><div id="epoch-image"></div><div id="epoch-axes" class="wcs-axes" role="group"></div><div id="epoch-colorbar" class="colorbar" role="group" aria-label="Surface Brightness (MJy/sr)"></div></div></div>
+          <label for="epoch-zoom">Display zoom (WCS unchanged)</label><input id="epoch-zoom" type="range" min="1" max="32" value="12"><output id="epoch-zoom-value">12×</output>
           <p id="epoch-current" role="status" aria-live="polite"></p>
           <ol id="epoch-slots"></ol>
-          <details><summary>完整序列 metadata 與對齊診斷</summary><pre id="epoch-raw"></pre></details>
+          <details><summary>Full sequence metadata and alignment diagnostics</summary><pre id="epoch-raw"></pre></details>
         </div>
       </section>
     </div>
-    <footer>資料來源 NASA / IRSA SPHEREx <span>Preview / Multi-epoch · Phase 4.5</span></footer>
+    <footer>Data source: NASA / IRSA SPHEREx <span>Preview / Multi-epoch · Phase 4.5</span></footer>
   </main>
 </body>
 </html>

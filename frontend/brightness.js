@@ -2,8 +2,8 @@
 (function (root) {
   "use strict";
   function rgba(display, lo, hi, method = "linear", inverse = false, overlay = true) {
-    if (![lo, hi, hi - lo].every(Number.isFinite) || hi <= lo) throw Error("最大值必須大於最小值，且範圍必須有限。");
-    if (!["linear", "asinh"].includes(method)) throw Error("未知的 stretch。");
+    if (![lo, hi, hi - lo].every(Number.isFinite) || hi <= lo) throw Error("The maximum must exceed the minimum, and the range must be finite.");
+    if (!["linear", "asinh"].includes(method)) throw Error("Unknown stretch method.");
     const [height, width] = display.shape;
     const output = new Uint8ClampedArray(width * height * 4);
     for (let i = 0; i < display.values.length; i++) {

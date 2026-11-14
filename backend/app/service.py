@@ -11,6 +11,7 @@ from pathlib import Path
 from research import spherex
 from .candidates import rank_candidates
 from .nasa_requests import BudgetStopped, MAX_CANDIDATES, RequestBudget
+from .wcs_axes import axes_from_fits
 
 log = logging.getLogger(__name__)
 
@@ -71,10 +72,10 @@ def create_preview(ra, dec, radius_deg, detector=None):
         except Exception as exc:
             log.warning("SIA query failed: %r", exc)
             if is_timeout(exc) or budget.stop_reason == "deadline":
-                raise PreviewError(504, "upstream_timeout", "NASA SIA2 查詢逾時，請稍後重試。") from exc
+                raise PreviewError(504, "upstream_timeout", "The NASA SIA2 query timed out. Retry later.") from exc
             if detector is not None and isinstance(exc, BudgetStopped):
-                raise PreviewError(503, "detector_search_incomplete", f"D{detector} 搜尋因請求預算或 NASA 等待限制中止，尚無法確認是否有可用資料。") from exc
-            raise PreviewError(502, "upstream_error", "NASA SIA2 查詢失敗或回傳無效資料，請稍後重試。") from exc
+                raise PreviewError(503, "detector_search_incomplete", f"The D{detector} search stopped at the request budget or NASA wait limit. Data availability could not be confirmed.") from exc
+            raise PreviewError(502, "upstream_error", "The NASA SIA2 query failed or returned invalid data. Retry later.") from exc
         if detector is not None:
             # Enforce selection before ranking even if a future query provider
             # returns unfiltered rows. Never fall back to a different detector.
@@ -82,9 +83,9 @@ def create_preview(ra, dec, radius_deg, detector=None):
         if not rows:
             if detector is not None:
                 if query_info.get("detector_search", {}).get("incomplete_collections"):
-                    raise PreviewError(503, "detector_search_incomplete", f"目前回傳結果未找到 D{detector}，但 SIA 結果仍截斷或含未知 detector；無法宣稱 NASA 沒有該資料。")
-                raise PreviewError(404, "detector_not_found", f"此座標與範圍的 DR1、QR3 完整 SIA 查詢中，沒有 D{detector} 候選影像。")
-            raise PreviewError(404, "no_images", "此座標與搜尋範圍內找不到影像。")
+                    raise PreviewError(503, "detector_search_incomplete", f"No D{detector} candidates were found in the returned results, but the SIA results are truncated or include unknown Detectors. This does not confirm that NASA has no matching data.")
+                raise PreviewError(404, "detector_not_found", f"No D{detector} candidate images were found in the complete DR1 and QR3 SIA queries for these coordinates and radius.")
+            raise PreviewError(404, "no_images", "No images were found for these coordinates and search radius.")
         timed_out = []
         seen = set()
         candidates_tried = 0
@@ -103,6 +104,7 @@ def create_preview(ra, dec, radius_deg, detector=None):
                 metadata = spherex.render_cutout(fits_path, row, ra, dec, radius_deg, out, url)
                 if detector is not None and str(metadata.get("detector", "")).strip() != str(detector):
                     raise ValueError(f"Requested D{detector}, but FITS IMAGE DETECTOR={metadata.get('detector')!r}")
+                metadata["wcs_axes"] = axes_from_fits(fits_path)
                 metadata.update(query_info)
                 metadata["requested_detector"] = detector
                 metadata.update(fits_bytes=fits_path.stat().st_size,
@@ -127,7 +129,7 @@ def create_preview(ra, dec, radius_deg, detector=None):
                 timed_out.append(is_timeout(exc))
                 log.warning("Cutout candidate source=%s failed: %r", source_index, exc)
         if budget.stop_reason == "deadline" or (timed_out and all(timed_out)):
-            raise PreviewError(504, "upstream_timeout", "NASA Cutout 服務逾時，請稍後重試。")
+            raise PreviewError(504, "upstream_timeout", "The NASA Cutout service timed out. Retry later.")
         if detector is not None:
-            raise PreviewError(502, "detector_cutout_failed", f"已找到 D{detector} 候選，但在候選與請求預算內無法取得通過 WCS、品質與 detector 檢查的 Cutout；未切換其他 detector。")
-        raise PreviewError(502, "cutout_failed", "在候選與請求預算內無法取得有效 Cutout，請稍後重試或調整座標。")
+            raise PreviewError(502, "detector_cutout_failed", f"D{detector} candidates were found, but no Cutout passed the WCS, quality, and Detector checks within the candidate and request budgets. No other Detector was used.")
+        raise PreviewError(502, "cutout_failed", "No valid Cutout was obtained within the candidate and request budgets. Retry later or adjust the coordinates.")

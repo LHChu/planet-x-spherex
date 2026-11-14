@@ -101,7 +101,7 @@ def create_app():
     async def validation_error(request, exc):
         # Do not echo raw non-finite input values into JSON.
         errors = [{"loc": list(e["loc"]), "type": e["type"], "message": e["msg"]} for e in exc.errors()]
-        return JSONResponse(status_code=422, content={"error": {"code": "invalid_input", "message": "請檢查 RA、Dec 與 radius_deg。", "details": errors}})
+        return JSONResponse(status_code=422, content={"error": {"code": "invalid_input", "message": "Check RA, Dec, and the search radius (radius_deg).", "details": errors}})
 
     @app.get("/health")
     def health():
@@ -112,7 +112,7 @@ def create_app():
         response.headers["Cache-Control"] = "no-store"
         if not app.state.preview_lock.acquire(blocking=False):
             return JSONResponse(status_code=503, headers={"Retry-After": "5"},
-                                content={"error": {"code": "busy", "message": "影像處理中，請稍後重試。"}})
+                                content={"error": {"code": "busy", "message": "Image processing is busy. Retry later."}})
         try:
             options = {} if payload.detector is None else {"detector": payload.detector}
             black, white, metadata = create_preview(payload.ra, payload.dec, payload.radius_deg, **options)
@@ -125,17 +125,17 @@ def create_app():
             raise
         except Exception as exc:
             log.exception("Unexpected preview processing error")
-            raise PreviewError(500, "internal_error", "影像處理失敗，請稍後重試。") from exc
+            raise PreviewError(500, "internal_error", "Image processing failed. Retry later.") from exc
         finally:
             app.state.preview_lock.release()
 
     @app.get("/api/images/{key}.png", name="get_image")
     def get_image(key: str):
         if not re.fullmatch(r"[0-9a-f]{32}(?:-inverse)?", key):
-            raise PreviewError(404, "image_not_found", "影像不存在或已到期，請重新查詢。")
+            raise PreviewError(404, "image_not_found", "The image is missing or has expired. Search again.")
         image = app.state.image_cache.get(key)
         if image is None:
-            raise PreviewError(404, "image_not_found", "影像不存在或已到期，請重新查詢。")
+            raise PreviewError(404, "image_not_found", "The image is missing or has expired. Search again.")
         return Response(content=image, media_type="image/png", headers={"Cache-Control": "no-store"})
 
     @app.post("/api/epochs/search")
@@ -151,7 +151,7 @@ def create_app():
             return cache.page(snapshot, 0, payload.limit)
         if not app.state.preview_lock.acquire(blocking=False):
             return JSONResponse(status_code=503, headers={"Retry-After": "5"},
-                                content={"error": {"code": "busy", "message": "已有查詢或影像工作處理中，請稍後重試。"}})
+                                content={"error": {"code": "busy", "message": "A search or image processing task is already running. Retry later."}})
         try:
             snapshot = cache.find(query)
             if snapshot is None:
@@ -161,7 +161,7 @@ def create_app():
             raise
         except Exception as exc:
             log.exception("Unexpected epoch metadata search error")
-            raise PreviewError(500, "internal_error", "多時期 metadata 查詢失敗，請稍後重試。") from exc
+            raise PreviewError(500, "internal_error", "The multi-epoch metadata search failed. Retry later.") from exc
         finally:
             app.state.preview_lock.release()
 
