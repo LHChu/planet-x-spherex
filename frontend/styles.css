@@ -5,3 +5,15 @@
 #histogram { display: block; width: 100%; height: 140px; background: #17212c; }
 #brightness input[type="checkbox"] { width: auto; }
 #brightness input[type="range"] { width: 100%; }
+/* Multi-epoch uses backend PNG geometry; scaling here is display zoom only. */
+.epoch-table { overflow: auto; max-height: 380px; }
+.epoch-table table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.epoch-table th,.epoch-table td { text-align: left; padding: 10px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; min-width: 75px; }
+.epoch-table td:last-child { min-width: 220px; }
+.epoch-table input[type="checkbox"] { width: auto; }
+#epoch-time { width: 100%; }
+#epoch-viewport img { max-width: none; image-rendering: pixelated; }
+#epoch-slots,#epoch-current,#epochs-status { font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+#epochs-status[data-state="error"] { color: #ffb3b5; }
+#epoch-slots li { margin-bottom: 12px; }
+#epoch-speed { width: auto; }

@@ -98,7 +98,7 @@
   function controls() {
     $("brightness").disabled = busy || !scienceDisplay;
     for (const id of ["black", "white", "zoom"]) $(id).disabled = busy || !result;
-    for (const id of ["search", "environment", "api-url", "detector"]) $(id).disabled = busy;
+    for (const id of ["search", "environment", "api-url", "detector", "explorer-mode"]) $(id).disabled = busy;
     $("search").textContent = busy ? "正在取得 NASA 影像…" : "搜尋 NASA 影像 ↗";
     $("viewport").setAttribute("aria-busy", String(busy));
   }
@@ -177,6 +177,7 @@
   $("white").addEventListener("click", () => switchMode("white"));
   $("search-form").addEventListener("submit", async event => {
     event.preventDefault(); if (busy) return;
+    if (window.SpherexEpochs?.active()) return window.SpherexEpochs.search();
     let base, body;
     try { base = apiBase(); body = payload(); persist(); } catch (e) { status(e.message, "error"); return; }
     busy = true; result = null; scienceDisplay = null; $("brightness").hidden = true; $("display-note").textContent = ""; controls();
@@ -205,4 +206,5 @@
       status(e.name === "AbortError" ? "等待 API 超過 180 秒，請稍後重試；後端工作可能仍在執行。" : e instanceof TypeError ? "無法連線 API。請確認後端已啟動、網址正確，且 CORS_ORIGINS 允許此前端來源。" : e.message, "error");
     } finally { clearTimeout(timer); busy = false; controls(); }
   });
+  window.SpherexEpochs?.mount({ apiBase, payload, persist });
 })();

@@ -115,6 +115,61 @@ snapshot 快取為單 worker 記憶體、最多 32 份／8 MiB JSON 編碼資料
 
 `test_epochs.py` 以合成 VOTable 覆蓋合併、分頁、篩選、嚴格輸入、OVERFLOW、來源失敗、快取、cursor、鎖及 429／503。另可選擇性回放本機 Phase 4.1 XML，核對 428 產品／217 曝光／215 個中心覆蓋曝光；沒有研究輸出時只跳過此回放，其餘測試獨立可跑。
 
+## Phase 4.4：多時期影格 API
+
+`POST /api/epoch-frames` 僅接受既有搜尋的 `search_id` 與 **2～3 個不同的 `product_id`**，不接受 URL、座標、grid 或其他額外欄位。同一組只能選相同且已知的 detector。輸出順序與請求相同，不會換曝光補位；不修改原有 preview／epochs search 的契約。
+
+```json
+{"search_id":"搜尋回應的 search_id","product_ids":["第一個 product_id","第二個 product_id"]}
+```
+
+在既有服務啟動後，可用以下 PowerShell **實際呼叫 NASA**（離線驗證使用下方 unittest，不執行此段）。先檢視候選，再明確填入選定的 2～3 個 ID；不要將「前兩筆」當成已驗證同波長。
+
+```powershell
+$base = 'http://127.0.0.1:8000'
+$query = @{ra=127.69444; dec=-39.17760; radius_deg=0.01; detectors=@(1); limit=100} | ConvertTo-Json
+$search = Invoke-RestMethod "$base/api/epochs/search" -Method Post -ContentType 'application/json' -Body $query
+$search.products | Select-Object product_id,obs_id,detector,t_min,obs_collection
+$chosen = @('貼上第一個 product_id', '貼上第二個 product_id')
+$body = @{search_id=$search.search_id; product_ids=$chosen} | ConvertTo-Json
+$sequence = Invoke-RestMethod "$base/api/epoch-frames" -Method Post -ContentType 'application/json' -Body $body
+$sequence | ConvertTo-Json -Depth 25
+Invoke-WebRequest $sequence.frames[0].image_url -OutFile frame-0.png
+Invoke-WebRequest $sequence.frames[0].data_url -OutFile frame-0.npz
+```
+
+若候選在後續頁面，沿用 epochs search 的 cursor 取得；product 必須屬於同一份 snapshot。`search_id` 過期／淘汰／服務重啟回 **410 `search_expired`**，即使影格快取仍存在也需重新搜尋。選到外部產品回 422 `invalid_product`，混 detector 回 422 `detector_mismatch`，來源 URL／產品 hash 不符回 422 `invalid_product_source`。格式或額外欄位回既有 422 `invalid_input`（其共用提示仍沿用原文）。工作鎖忙碌回 503 `busy`、`Retry-After: 5`；序列超出快取容量回 503 `frame_capacity`。
+
+HTTP 200 的內容：
+
+- `sequence_id`、`search_id`、`policy_version=phase4.4-v1`、`expires_at`、`expires_in_seconds`、`counts`、本次 `nasa_request_count`。`complete` 只代表所有指定產品都完成重投影，不保證品質／對齊／波長合格；全部 slot 失敗仍回 200 並逐一揭露原因。
+- `grid`：以搜尋的 ICRS 中心建立固定 TAN、29×29、6.15 arcsec/pixel、北上東左格網，FITS CRPIX=(15,15)。保留原來 3arcmin Cutout，不為旋轉缺角下載更大視窗。
+- `frames`：保留 index、product_id、obs_id、detector、來源 collection(s)／URL／版本、原始 SIA MJD；成功時另有 DATE-OBS、UTC／time_source、波長／bandwidth（µm）、WCS 幾何閉合、FLAGS 定義、品質與中心有效性、calibration HISTORY、FITS SHA-256。時間優先讀 FITS UTC DATE-OBS，缺欄時明示回退 SIA；明示非 UTC 的 FITS 保守拒絕。
+- `geometry.status` 與 `alignment.status` 分開：閉合誤差需 <1e-5 pixel；星點相對殘差至少 3 對、median <0.5、maximum <1 pixel。全部成功影格兩兩檢查，不足為 `unverified`，超標或中心／幾何失敗為 `failed`；slot 為 `alignment_unqualified`，仍可檢視診斷影格，不宣稱對齊合格。完整配對診斷在 `pair_checks`。
+- `mode=comparable_visualization` 僅於所有 slot 成功、全部兩兩波長相容、校準 provenance 相容、中心／對齊通過且有共同有效區時成立。波長政策：Δλ ≤ 0.1 × min(bandwidth)，bandwidth 相對差 ≤ 0.1；alternate W 手動 -TAB 插值需通過 WCSLIB 核心交叉核對，不能套 spatial SIP。校準採 v27、相同非空 pipeline／CALIB HISTORY 與單位的保守政策。
+- 可比較組取共同有效區合併 p1/p99，固定相同 lo/hi 與 asinh(10x)；其他組為 `mode=observation_browse`，逐張 stretch 並明示。`normalization` 與每張實際範圍均回傳；`photometric_series` **永遠為 false**。目標位置相容不代表整個視場波段一致，不提供光變推論。
+- 下載／解析失敗保留原 slot、`status=failed`、`error.code/message/http_status/budget_stop_reason`，URL 為 null。成功重投影的 slot 提供 `image_url` 及 `data_url`。
+
+`GET /api/epoch-frames/{sequence_id}/{index}.png` 回 29×29 RGBA PNG，無效 pixel 的 alpha=0；上下翻轉僅供北上顯示。`{index}.npz` 為 NumPy 壓縮資料（`np.load(path, allow_pickle=False)`）：`native_image` 保留原始 IMAGE 的值／dtype／NaN、`native_flags` 保留完整 bit 值（uint64）、`native_valid`；另有 `aligned_image`（float32、無效值 NaN）、`valid_mask`、`valid_weight`、`geometric_weight`、`flags_or`、原生及輸出 WCS header。NPZ 陣列未上下翻轉；零基中心為 (14,14)。`flags_or=0` 不代表有效，必須併用 mask／幾何資訊。
+
+所有非零權重的雙線性支撐像素必須有效；FLAGS 只允許 SOURCE／FULLSAMPLE 資訊位，其餘已知／未知位均拒絕。FLAGS 與 IMAGE shape／抽樣 WCS 需相符。原始 FITS 唯讀、逐張下載／關閉，不保留 HDU 或展開 EPSF。限制 IMAGE／FLAGS 每軸 ≤128、波長表固定欄位 ≤1 MiB，IMAGE 單位必須是 MJy/sr（不更動原始值）。
+
+與 preview／新 metadata search 共用鎖；每組最多 16 次 HTTP 嘗試、120 秒協作期限、20 秒 socket timeout、每 URL 三次，429／503 遵守 Retry-After 與跨 slot cooldown，等待 >15 秒或超過剩餘預算則停止其餘下載。為避免未計數請求與任意來源，**不跟隨任何 HTTP redirect**；不回退完整母影像。這些是專案上限，不是 NASA 公告配額，也不是硬性 DNS／OS 牆鐘保證。
+
+序列快取獨立上限 **8 MiB／16 組**（manifest+所有 PNG+NPZ 序列化 bytes），與既有 PNG 16 MiB、metadata 8 MiB 合計 ≤32 MiB 序列化 payload；不是 RSS 保證。成功重投影全組 TTL 600 秒，含失敗 slot 為 60 秒，讀取不延長到期。manifest／blob 整組 FIFO 淘汰，blob 過期回 404 `frame_not_found`。同 snapshot、同順序選取、同政策版本命中零新請求；反轉順序視為另一組。快取命中可在鎖忙時回傳。`expires_at` 為權威時間，`expires_in_seconds` 是建立時 TTL。
+
+本輪不增加跨請求／跨 endpoint 的持久 NASA cooldown；既有 preview 行為維持原樣。不同選取或到期後重試仍可能發出新請求；請勿當成批次下載服務。記憶體快取僅限單 worker，重啟即失效。未實作前端、時間軸、動畫或 Phase 4.5。
+
+離線驗證（不下載新 NASA 資料）：
+
+```powershell
+$env:SPHEREX_LIVE = '0'
+.\research\.venv\Scripts\python.exe -m unittest backend.tests.test_epoch_frames -v
+.\research\.venv\Scripts\python.exe -m unittest discover -s backend/tests
+```
+
+合成 FITS 核心測試不依賴研究輸出；本機 Phase 4.2 FITS 回放在缺檔時跳過。結果與尚未驗證項目見 [Phase 4.4 報告](phase4-4-report.md)。
+
 ## CORS 設定
 
 啟動前可設定以逗號分隔的完整 origins，不能包含路徑或尾端斜線：

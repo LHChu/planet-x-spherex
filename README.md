@@ -1,5 +1,7 @@
 # Planet X and SPHEREx
 
+Phase 4.5 已新增獨立 Multi-epoch 模式與離線播放器；保留原 Preview。實作範圍、離線／真實後端逐步驗收與未驗證限制見 [Phase 4.5 前端報告](frontend/phase4-5-report.md)。離線驗證：`node --test frontend/tests/*.test.mjs`；獨立合成服務：`node frontend/tools/serve.mjs --epochs-fixture --port=5501 --fixture-port=8002`（API 設為 `http://127.0.0.1:8002`，不連 NASA）。
+
 NASA Space Apps 專案：以天球座標探索 SPHEREx 紅外線影像。
 
 - `research/`：Phase 1 NASA 查詢、FITS 處理與已保存的真實輸出。

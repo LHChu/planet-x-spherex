@@ -85,6 +85,14 @@ class SnapshotCache:
         value = f'{snapshot["search_id"]}.{offset}'
         return value + "." + hmac.new(self.secret, value.encode(), "sha256").hexdigest()
 
+    def get(self, search_id):
+        with self.lock:
+            self.prune()
+            item = self.items.get(search_id)
+        if item is None:
+            raise PreviewError(410, "search_expired", "Metadata snapshot expired or was evicted; search again.")
+        return item[2]
+
     def resume(self, cursor, query):
         if not re.fullmatch(r"[0-9a-f]{32}\.[0-9]{1,6}\.[0-9a-f]{64}", cursor):
             raise PreviewError(422, "invalid_cursor", "Invalid metadata cursor.")

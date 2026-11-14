@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .cache import ImageCache
 from .service import PreviewError, create_preview
 from .epochs import SnapshotCache, search_metadata
+from .epoch_frames import SequenceCache, select_products, create_frames, POLICY
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +60,19 @@ class EpochSearchRequest(CoordinateRequest):
         return value
 
 
+class EpochFramesRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    search_id: Annotated[str, Field(pattern=r"^[0-9a-f]{32}$")]
+    product_ids: Annotated[list[Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]], Field(min_length=2, max_length=3)]
+
+    @field_validator("product_ids")
+    @classmethod
+    def unique_products(cls, value):
+        if len(value) != len(set(value)):
+            raise ValueError("Select distinct products")
+        return value
+
+
 def origins_from_env():
     origins = [o.strip() for o in os.getenv(
         "CORS_ORIGINS", "http://localhost:5500,http://127.0.0.1:5500,http://localhost:5173").split(",") if o.strip()]
@@ -77,6 +91,7 @@ def create_app():
     app.state.image_cache = ImageCache()
     app.state.preview_lock = threading.Lock()
     app.state.epoch_cache = SnapshotCache()
+    app.state.sequence_cache = SequenceCache()
 
     @app.exception_handler(PreviewError)
     async def preview_error(request, exc):
@@ -149,6 +164,49 @@ def create_app():
             raise PreviewError(500, "internal_error", "多時期 metadata 查詢失敗，請稍後重試。") from exc
         finally:
             app.state.preview_lock.release()
+
+    @app.post("/api/epoch-frames")
+    def epoch_frames(payload: EpochFramesRequest, request: Request, response: Response):
+        response.headers["Cache-Control"] = "no-store"
+        snapshot = app.state.epoch_cache.get(payload.search_id)
+        selected = select_products(snapshot, payload.product_ids)
+        selection = (POLICY, payload.search_id, tuple(payload.product_ids))
+        cache = app.state.sequence_cache
+
+        def urls(result):
+            return {**result, "frames": [{**frame,
+                "image_url": str(request.url_for("get_epoch_artifact", sid=result["sequence_id"], name=f'{frame["index"]}.png')) if frame["status"] != "failed" else None,
+                "data_url": str(request.url_for("get_epoch_artifact", sid=result["sequence_id"], name=f'{frame["index"]}.npz')) if frame["status"] != "failed" else None}
+                for frame in result["frames"]]}
+
+        result = cache.find(selection)
+        if result is not None:
+            return urls(result)
+        if not app.state.preview_lock.acquire(blocking=False):
+            return JSONResponse(status_code=503, headers={"Retry-After": "5"},
+                                content={"error": {"code": "busy", "message": "Image processing is busy; retry later."}})
+        try:
+            result = cache.find(selection)
+            if result is None:
+                result, blobs = create_frames(snapshot, selected)
+                result = cache.put(selection, result, blobs)
+            return urls(result)
+        except PreviewError:
+            raise
+        except Exception as exc:
+            log.exception("Unexpected epoch frame error")
+            raise PreviewError(500, "internal_error", "Epoch frame processing failed.") from exc
+        finally:
+            app.state.preview_lock.release()
+
+    @app.get("/api/epoch-frames/{sid}/{name}", name="get_epoch_artifact")
+    def get_epoch_artifact(sid: str, name: str):
+        if not re.fullmatch(r"[0-9a-f]{32}",sid) or not re.fullmatch(r"[0-2]\.(png|npz)",name):
+            raise PreviewError(404,"frame_not_found","Frame artifact not found or expired.")
+        blob = app.state.sequence_cache.blob(sid,name)
+        if blob is None:
+            raise PreviewError(404,"frame_not_found","Frame artifact not found or expired.")
+        return Response(blob,media_type="image/png" if name.endswith(".png") else "application/octet-stream",headers={"Cache-Control":"no-store"})
 
     return app
 
