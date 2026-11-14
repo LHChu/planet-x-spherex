@@ -1,15 +1,31 @@
 # SPHEREx Phase 2：本機 FastAPI 後端
 
-從專案根目錄 `D:\repo\nasa` 操作，沿用 `research/.venv`（Python 3.11）。
+## 本機啟動（Windows PowerShell）
+
+第一次 Clone 請先參考[根目錄 README 的 Requirements 與 Quick Start](../README.md#quick-start)。以下所有指令都在 Clone 後的**專案根目錄**執行（同時含有 `backend/`、`research/`、`frontend/` 的資料夾），不要先切換到 `backend/`；不要求特定磁碟或絕對路徑。
+
+建立 Python 3.11 虛擬環境並安裝執行所需套件（已完成者可跳過）：
 
 ```powershell
-.\research\.venv\Scripts\python.exe -m pip install -r backend/requirements-dev.txt
+py -3.11 -m venv research/.venv
+.\research\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt
+```
+
+`backend/requirements.txt` 透過 `-r ../research/requirements.txt` 引用研究階段依賴；pip 依 requirements 檔案位置解析該路徑，不需額外安裝一次。直接使用虛擬環境的 `python.exe`，不需執行 `Activate.ps1`。
+
+啟動 FastAPI（port 8000），並保持此 Terminal 執行中：
+
+```powershell
 .\research\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --workers 1
 ```
 
 開啟 http://127.0.0.1:8000/docs 使用互動式 API。`GET /health` 只檢查後端可回應，不呼叫 NASA。
 
+另開一個位於專案根目錄的 Terminal，執行 `node frontend/tools/serve.mjs`（Node.js 18+，不需 `npm install`），再開啟 http://127.0.0.1:5500/planet-x/。頁面選「本機 localhost」，API 基底網址填 `http://127.0.0.1:8000`。前後端分別在兩個 Terminal 運作；按 `Ctrl+C` 停止各自的伺服器。
+
 ## PowerShell 測試
+
+保持 FastAPI 執行，另開位於專案根目錄的 PowerShell 執行以下指令。這會實際連線 NASA，PNG 下載至專案根目錄。
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8000/health
@@ -66,7 +82,10 @@ $env:CORS_ORIGINS = 'http://localhost:5500,http://127.0.0.1:5500,https://YOUR_AC
 
 ## 測試
 
+在專案根目錄安裝測試依賴後執行。`requirements-dev.txt` 也會引用正式依賴；一般啟動只需 `requirements.txt`。
+
 ```powershell
+.\research\.venv\Scripts\python.exe -m pip install -r backend/requirements-dev.txt
 .\research\.venv\Scripts\python.exe -m unittest discover -s backend/tests -v
 $env:SPHEREX_LIVE = '1'
 .\research\.venv\Scripts\python.exe -m unittest backend.tests.test_api.ApiTests.test_live_nasa -v

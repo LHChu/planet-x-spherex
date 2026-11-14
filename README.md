@@ -6,15 +6,91 @@ NASA Space Apps 專案：以天球座標探索 SPHEREx 紅外線影像。
 - `backend/`：Phase 2 FastAPI；API、限制與啟動方式見 [backend/README.md](backend/README.md)。
 - `frontend/`：Phase 3 純 HTML、CSS、JavaScript 單張影像預覽，無建置及前端套件依賴。
 
-## 本機使用
+## Requirements
 
-在專案根目錄開啟終端機，依後端 README 啟動 FastAPI（預設 `http://127.0.0.1:8000`），另一個終端機執行：
+- **Windows PowerShell**：以下指令以 Windows 為準。
+- **Python 3.11**：安裝時請一併安裝 Python Launcher，讓 `py -3.11` 可以選取正確版本。
+- **Node.js 18+**：用於啟動前端靜態伺服器與執行前端測試。
+- **Git**：用於 Clone Repository。
+- **瀏覽器與必要網路連線**：Clone 需要連線 GitHub；安裝 Python 套件需要連線 PyPI 與套件下載站；實際查詢與下載影像需要後端能以 HTTPS 連線 NASA／IRSA（`irsa.ipac.caltech.edu`）。使用 Render 時，瀏覽器也需要能連線至該 Render HTTPS 服務。
+
+安裝工具後，重新開啟 PowerShell。可用以下指令確認版本（Python 應為 3.11，Node.js 應為 18 或以上）：
+
+```powershell
+py -3.11 --version
+node --version
+git --version
+```
+
+## Quick Start
+
+除了第一步 Clone 與進入資料夾，**本文件及後端文件的所有指令都從專案根目錄執行**。根目錄是同時含有 `README.md`、`research/`、`backend/`、`frontend/` 的 `planet-x-spherex` 資料夾，不要求放在特定磁碟或絕對路徑。
+
+### 1. Clone Repository
+
+在想存放專案的資料夾開啟 PowerShell：
+
+```powershell
+git clone https://github.com/zo4j433/planet-x-spherex.git
+Set-Location .\planet-x-spherex
+```
+
+接下來請留在此專案根目錄，不要切換到 `backend/` 或 `frontend/`。
+
+### 2. 建立 Python 虛擬環境並安裝套件
+
+```powershell
+py -3.11 -m venv research/.venv
+.\research\.venv\Scripts\python.exe -m pip install -r backend/requirements.txt
+```
+
+`backend/requirements.txt` 已透過 `-r ../research/requirements.txt` 引用研究階段的依賴，pip 會依 requirements 檔案所在位置解析此相對路徑，因此只需執行上面一次安裝指令，不用另裝 `research/requirements.txt`。
+
+以下所有 Python 指令直接使用虛擬環境內的 `python.exe`，**不需要啟用虛擬環境，也不需要執行 `Activate.ps1` 或更改 PowerShell 執行原則**。每位同學應自行建立虛擬環境，不能複製別人的 `.venv`。
+
+### 3. 啟動 FastAPI（Terminal 1，port 8000）
+
+```powershell
+.\research\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --workers 1
+```
+
+看到 Uvicorn 顯示 `http://127.0.0.1:8000` 後，保持此 Terminal 執行中。可在瀏覽器開啟 http://127.0.0.1:8000/health，應看到 `{"status":"ok"}`；互動式 API 文件位於 http://127.0.0.1:8000/docs。健康檢查不會連線 NASA。
+
+### 4. 啟動前端（Terminal 2，port 5500）
+
+**另開一個 PowerShell Terminal，工作目錄也設為剛才 Clone 的專案根目錄**。例如使用 VS Code 開啟整個 `planet-x-spherex` 資料夾，再新增 Terminal；請確認新 Terminal 位於根目錄。
 
 ```powershell
 node frontend/tools/serve.mjs
 ```
 
-開啟 **http://127.0.0.1:5500/planet-x/**。選「本機 localhost」，API 基底網址填 `http://127.0.0.1:8000`，再搜尋。也支援根路徑 http://127.0.0.1:5500/。
+前端不需要 `npm install`，直接使用 Node.js 內建模組。保持此 Terminal 執行中；前後端需同時運作。
+
+### 5. 開啟頁面並測試影像查詢
+
+開啟 **http://127.0.0.1:5500/planet-x/**（保留最後的 `/`）。也支援根路徑 http://127.0.0.1:5500/。
+
+在頁面的「API 連線設定」選「本機 localhost」，API 基底網址填 `http://127.0.0.1:8000`，使用以下已驗證範例後按「搜尋 NASA 影像」：
+
+| 欄位 | 測試值 | 單位 |
+|---|---|---|
+| 赤經 RA | `127.69444` | 度 |
+| 赤緯 Dec | `-39.17760` | 度 |
+| 搜尋半徑 `radius_deg` | `0.01` | 度 |
+
+查詢可能需要數分鐘。成功時可看到 NASA PNG、觀測時間與 detector，並切換黑底白光／白底黑光、調整縮放。範例曾成功取得影像，但仍需 NASA 上游服務正常。完成使用後，在兩個 Terminal 分別按 `Ctrl+C` 停止伺服器。
+
+### 啟動問題排查
+
+- `py -3.11` 找不到 Python：先安裝 Python 3.11 與 Python Launcher，重新開啟 Terminal 後再建立環境。
+- `.venv` 指向不存在的 Python：該環境可能來自另一台電腦或舊安裝，請先移走舊的 `research/.venv`，再依第二步重新建立與安裝。
+- `node` 或 `git` 無法辨識：確認已安裝並加入 PATH，安裝後重新開啟 Terminal。
+- 找不到 `backend.app.main` 或前端腳本：確認目前位於專案根目錄。
+- port 8000／5500 已被占用：停止之前啟動的同一個伺服器，再依原指令重啟。
+- 頁面開啟但 API 無法連線：確認 Terminal 1 仍在執行、`/health` 正常，以及頁面 API 網址為 `http://127.0.0.1:8000`。本機預設 CORS 已允許 `http://127.0.0.1:5500`，不需要修改後端。
+- `/health` 正常但查詢失敗：健康檢查不代表 NASA 可連線，請依頁面錯誤與後端日誌確認網路或上游服務狀態。API 錯誤代碼見 [後端說明](backend/README.md#錯誤)。
+
+## 本機功能與資料回放
 
 預設座標為已驗證範例 RA `127.69444`、Dec `-39.17760`、半徑 `0.01` 度。可切換黑底／白底 PNG，並以 1–32 倍原始像素縮放。預設 12 倍，29×29 影像顯示為 348×348。觀測時間採 API 提供的 UTC／MJD，缺少欄位顯示「未提供」。
 
@@ -22,7 +98,7 @@ node frontend/tools/serve.mjs
 
 ### 僅用既有資料回放
 
-若後端暫時無法啟動，可以測試前端顯示流程：
+若後端暫時無法啟動，且本機已有 Phase 1 產生的 `research/outputs/metadata.json`、`black-background.png`、`white-background.png`，可以測試前端顯示流程。**`research/outputs/` 被 Git 忽略，剛 Clone 不會有這些檔案，首次啟動請使用上面的正式後端流程。** 先停止原本的前端伺服器，再從根目錄執行：
 
 ```powershell
 node frontend/tools/serve.mjs --fixture
