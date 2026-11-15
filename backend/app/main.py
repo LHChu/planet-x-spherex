@@ -23,10 +23,11 @@ class CoordinateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False, strict=True)
     ra: Annotated[float, Field(ge=0, lt=360, description="ICRS RA in decimal degrees")]
     dec: Annotated[float, Field(ge=-90, le=90, description="ICRS Dec in decimal degrees")]
-    radius_deg: Annotated[float, Field(gt=0, le=5 / 60, description="SIA circle radius in degrees; cutout remains 3arcmin")]
+    radius_deg: Annotated[float, Field(gt=0, le=5 / 60, description="SIA search circle radius in degrees, independent of cutout size")]
 
 
 class PreviewRequest(CoordinateRequest):
+    cutout_profile: Literal["small", "medium"] = "small"
     detector: Annotated[int, Field(ge=1, le=6, description="SPHEREx detector; omit or null for Auto")] | None = None
 
 
@@ -115,6 +116,8 @@ def create_app():
                                 content={"error": {"code": "busy", "message": "Image processing is busy. Retry later."}})
         try:
             options = {} if payload.detector is None else {"detector": payload.detector}
+            if payload.cutout_profile != "small":
+                options["cutout_profile"] = payload.cutout_profile
             black, white, metadata = create_preview(payload.ra, payload.dec, payload.radius_deg, **options)
             key = app.state.image_cache.put(black, white)
             return {"key": key,

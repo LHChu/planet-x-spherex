@@ -57,7 +57,8 @@ class CandidateTests(unittest.TestCase):
             requested.append(url)
             path.write_bytes(b"fixture")
 
-        def render(path, row, ra, dec, radius, out, url):
+        def render(path, row, ra, dec, radius, out, url, cutout_size="3arcmin"):
+            self.assertEqual(cutout_size, "3arcmin")
             if "5.fits?" not in url:
                 raise spherex.TargetOutsideImage("outside test fixture")
             (out / "black-background.png").write_bytes(b"black-unit-fixture")

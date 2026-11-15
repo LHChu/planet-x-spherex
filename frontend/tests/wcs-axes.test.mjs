@@ -49,8 +49,8 @@ test('rendered ticks and labels share the image offset; zoom changes positions o
     const yTicks = host.children.filter(n => n.className === 'wcs-y-tick');
     for (const node of xTicks) assert.ok(model.ra.some(t => `${model.margin.left + t.position}px` === node.style.left && Number(node.children[0].textContent) === Number(t.degrees.toFixed(6))));
     for (const node of yTicks) assert.ok(model.dec.some(t => `${model.margin.top + t.position}px` === node.style.top && Number(node.children[0].textContent) === Number(t.degrees.toFixed(6))));
-    assert.ok(host.children.some(n => n.textContent === 'Right Ascension (RA) · degrees'));
-    assert.ok(host.children.some(n => n.textContent === 'Declination (Dec) · degrees'));
+    assert.ok(host.children.some(n => n.textContent === 'RA (\u00b0) · degrees'));
+    assert.ok(host.children.some(n => n.textContent === 'Dec (\u00b0) · degrees'));
     assert.ok(xTicks.length >= 1); assert.ok(yTicks.length >= 1);
     if (zoom === 1) assert.equal(xTicks.length, 1);
   }

@@ -60,8 +60,8 @@
       const mark = add("wcs-y-tick", null, margin.left - 5, margin.top + tick.position);
       const label = document.createElement("span"); label.textContent = degrees(tick.degrees); mark.append(label);
     }
-    add("wcs-x-title", "Right Ascension (RA) · degrees", margin.left + model.width / 2, bottom + 38);
-    add("wcs-y-title", "Declination (Dec) · degrees", 18, margin.top + model.height / 2);
+    add("wcs-x-title", "RA (\u00b0) · degrees", margin.left + model.width / 2, bottom + 38);
+    add("wcs-y-title", "Dec (\u00b0) · degrees", 18, margin.top + model.height / 2);
     return model;
   }
   window.SpherexAxes = Object.freeze({ layout, render });

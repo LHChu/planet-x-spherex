@@ -124,7 +124,8 @@ class DetectorTests(unittest.TestCase):
         self.assertEqual(len(metadata["detector_search"]["attempts"]), 2)
 
     @staticmethod
-    def render(path, row, ra, dec, radius, out, url):
+    def render(path, row, ra, dec, radius, out, url, cutout_size="3arcmin"):
+        assert cutout_size == "3arcmin"
         (out / "black-background.png").write_bytes(b"black")
         (out / "white-background.png").write_bytes(b"white")
         return {"detector": row["detector"]}

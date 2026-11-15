@@ -18,7 +18,7 @@ const normal = (overrides = {}) => ({ lo: -2, hi: 6, denominator: 8, stretch: 'a
 const scale = (overrides = {}) => cb.mapping({ ...normal(), unit: 'MJy/sr', ...overrides });
 
 test('Linear and Asinh Color Bars match every displayed Preview gray level, including inversion', () => {
-  for (const stretch of ['linear', 'asinh']) for (const inverse of [false, true]) {
+  for (const stretch of ['linear', 'asinh', 'log', 'sqrt']) for (const inverse of [false, true]) {
     const s = scale({ stretch, inverse, rounding: 'half_up' });
     const values = Array.from({ length: 257 }, (_, i) => -2 + 8 * i / 256);
     const display = { shape: [1, values.length], values, valid: values.map(() => true) };
@@ -44,7 +44,7 @@ test('backend denominator floor and nearest-even quantization are respected', ()
 test('invalid units, ranges, transforms and missing metadata never invent a scale', () => {
   for (const overrides of [{ unit: undefined }, { unit: 'mJy/sr' }, { unit: 'Jy/sr' }, { lo: null },
     { hi: NaN }, { hi: Infinity }, { hi: -2 }, { hi: -3 }, { denominator: undefined }, { denominator: 0 },
-    { denominator: 1 }, { stretch: 'log' }, { a: null }, { a: 0 }, { rounding: 'unknown' }]) assert.equal(scale(overrides), null);
+    { denominator: 1 }, { stretch: 'unknown' }, { a: null }, { a: 0 }, { rounding: 'unknown' }]) assert.equal(scale(overrides), null);
   assert.equal(cb.preview({}), null);
   assert.equal(cb.gray(scale(), NaN), null);
   assert.equal(cb.gray(scale(), null), null);

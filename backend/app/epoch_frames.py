@@ -323,6 +323,22 @@ def create_frames(snapshot, selected):
         frames[i]["normalization"] = {"lo":low,"hi":high,"stretch":"asinh","a":10,
                                       "denominator":max(high-low,1e-8),"rounding":"nearest_even"}
         frames[i]["status"] = "ready" if frames[i]["alignment"]["status"] == "pass" else "alignment_unqualified"
+        # Add bounded client display data from arrays already in memory. No new
+        # I/O, mask decisions, WCS operations or changes to the archived arrays.
+        aligned, valid = data["aligned_image"], data["valid_mask"]
+        if valid.any():
+            dlo, dhi, minimum, maximum, fallback = spherex.display_limits(aligned[valid])
+            display = spherex.display_payload(aligned, valid, None,
+                        low if high > low else dlo, high if high > low else dhi,
+                        minimum, maximum, fallback, "MJy/sr")
+            native = data["native_image"][data["native_valid"]]
+            nlo, nhi, nmin, nmax, _, = spherex.display_limits(native)
+            counts, edges = np.histogram(native.astype(np.float64), bins=64,
+                                        range=(nmin, nmax) if nmax > nmin else (nlo, nhi))
+            display["histogram"] = {"counts": counts.tolist(), "edges": edges.tolist()}
+            display["histogram_source"] = "valid native IMAGE pixels before reprojection"
+            display["quality_policy"] = {"policy": frames[i]["quality_policy"], "flags_present": True}
+            frames[i]["display"] = display
         blobs[f"{i}.png"] = png(data["aligned_image"],low,high)
         raw = io.BytesIO()
         np.savez_compressed(raw,**data)

@@ -100,6 +100,27 @@ class FrameApiTests(unittest.TestCase):
     def post(self, ids=None, **kwargs):
         return self.client.post("/api/epoch-frames",json={"search_id":self.snapshot["search_id"],"product_ids":self.ids[:2] if ids is None else ids,**kwargs})
 
+    def test_client_display_matches_aligned_values_and_native_histogram(self):
+        b = self.post().json()
+        self.assertEqual(len(self.calls), 2)
+        for frame in b["frames"]:
+            d = frame["display"]
+            raw = self.client.get(frame["data_url"]).content
+            with np.load(io.BytesIO(raw), allow_pickle=False) as a:
+                values = np.array([np.nan if v is None else v for v in d["values"]]).reshape(d["shape"])
+                np.testing.assert_allclose(values, a["aligned_image"], equal_nan=True)
+                np.testing.assert_array_equal(np.array(d["valid"]).reshape(d["shape"]), a["valid_mask"])
+                native = a["native_image"][a["native_valid"]].astype(np.float64)
+                counts, edges = np.histogram(native, bins=64)
+                self.assertEqual(d["histogram"]["counts"], counts.tolist())
+                np.testing.assert_allclose(d["histogram"]["edges"], edges)
+                self.assertEqual(sum(d["histogram"]["counts"]), native.size)
+            self.assertEqual(d["lo"], b["normalization"]["lo"])
+            self.assertEqual(d["hi"], b["normalization"]["hi"])
+            self.assertIn("SOURCE/FULLSAMPLE", d["quality_policy"]["policy"])
+        self.post()
+        self.assertEqual(len(self.calls), 2, "Display data does not trigger extra downloads")
+
     def test_shared_grid_wavelength_normalization_native_mask_and_cache(self):
         self.options["two"] = {"angle":12}
         response = self.post()

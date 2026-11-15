@@ -12,6 +12,7 @@ from research import spherex
 from .candidates import rank_candidates
 from .nasa_requests import BudgetStopped, MAX_CANDIDATES, RequestBudget
 from .wcs_axes import axes_from_fits
+from .preview_size import PROFILES, field_from_fits
 
 log = logging.getLogger(__name__)
 
@@ -59,12 +60,14 @@ def preview_directory():
         temporary.cleanup()
 
 
-def create_preview(ra, dec, radius_deg, detector=None):
+def create_preview(ra, dec, radius_deg, detector=None, cutout_profile="small"):
+    if not isinstance(cutout_profile, str) or cutout_profile not in PROFILES:
+        raise PreviewError(422, "invalid_cutout_profile", "Select small or medium for Preview Cutout Size.")
+    cutout_size, requested_arcmin = PROFILES[cutout_profile]
     started = time.perf_counter()
     events = []
     budget = RequestBudget()
-    # Keep the verified 3arcmin display size. Radius controls the SIA search,
-    # not the cutout size; these are deliberately separate documented inputs.
+    # Radius controls SIA search only; angular cutout comes from a fixed allowlist.
     with preview_directory() as out:
         try:
             options = {} if detector is None else {"detector": detector}
@@ -93,7 +96,7 @@ def create_preview(ra, dec, radius_deg, detector=None):
             if candidates_tried >= MAX_CANDIDATES:
                 break
             try:
-                url = spherex.build_cutout_url(row, ra, dec)
+                url = spherex.build_cutout_url(row, ra, dec, cutout_size=cutout_size)
                 if url in seen:
                     continue
                 seen.add(url)  # Includes WCS-rejected URLs: never download again.
@@ -101,11 +104,13 @@ def create_preview(ra, dec, radius_deg, detector=None):
                 candidates_tried += 1
                 fits_path = out / "cutout.fits"
                 budget.fetch(url, fits_path, spherex.LIMIT, events)
-                metadata = spherex.render_cutout(fits_path, row, ra, dec, radius_deg, out, url)
+                metadata = spherex.render_cutout(fits_path, row, ra, dec, radius_deg, out, url, cutout_size=cutout_size)
                 if detector is not None and str(metadata.get("detector", "")).strip() != str(detector):
                     raise ValueError(f"Requested D{detector}, but FITS IMAGE DETECTOR={metadata.get('detector')!r}")
                 metadata["wcs_axes"] = axes_from_fits(fits_path)
                 metadata.update(query_info)
+                metadata.update(cutout_profile=cutout_profile, requested_cutout_arcmin=requested_arcmin,
+                                actual_shape_yx=metadata.get("shape"), wcs_field=field_from_fits(fits_path))
                 metadata["requested_detector"] = detector
                 metadata.update(fits_bytes=fits_path.stat().st_size,
                                 image_count_returned=len(rows), candidate_attempts=candidates_tried,

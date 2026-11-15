@@ -33,6 +33,14 @@ test('Pages artifact contains only public files; all assets load under root and 
     assert.ok(assets.includes('./epochs.js'));
     assert.ok(assets.indexOf('./config.js') < assets.indexOf('./app.js'));
     for (const asset of assets) {
+      if (['https://spherex.caltech.edu', 'https://irsa.ipac.caltech.edu/Missions/spherex.html'].includes(asset)) {
+        assert.ok(html.includes('href="' + asset + '" target="_blank" rel="noopener noreferrer"'));
+        continue; // Official navigation links are never fetched offline.
+      }
+      if (asset === 'https://caltech-ipac.github.io/irsa-tutorials/spherex-intro/') {
+        assert.match(html, /<a href="https:\/\/caltech-ipac.github.io\/irsa-tutorials\/spherex-intro\/" target="_blank" rel="noopener">/);
+        continue; // Documentation link, never fetched by this offline test.
+      }
       assert.ok(asset.startsWith('./'), `Asset must be relative: ${asset}`);
       const url = new URL(asset, page);
       assert.ok(url.pathname.startsWith(prefix));

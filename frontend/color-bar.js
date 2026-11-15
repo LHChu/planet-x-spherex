@@ -5,7 +5,7 @@
   function mapping({ lo, hi, stretch, a, denominator, unit, inverse = false, rounding = "half_up" } = {}) {
     const span = hi - lo;
     if (!unitIsSupported(unit) || ![lo, hi, span, denominator].every(Number.isFinite) || span <= 0
-      || denominator <= 0 || denominator < span || !["linear", "asinh"].includes(stretch)
+      || denominator <= 0 || denominator < span || !["linear", "asinh", "log", "sqrt"].includes(stretch)
       || (stretch === "asinh" && (!Number.isFinite(a) || a <= 0)) || typeof inverse !== "boolean"
       || !["half_up", "nearest_even"].includes(rounding)) return null;
     return { lo, hi, stretch, a: stretch === "asinh" ? a : null, denominator, unit: "MJy/sr", inverse, rounding };
@@ -47,6 +47,8 @@
     if (!scale || !Number.isFinite(value)) return null;
     let fraction = Math.max(0, Math.min(1, (value - scale.lo) / scale.denominator));
     if (scale.stretch === "asinh") fraction = Math.asinh(scale.a * fraction) / Math.asinh(scale.a);
+    if (scale.stretch === "sqrt") fraction = Math.sqrt(fraction);
+    if (scale.stretch === "log") fraction = Math.log1p(1000 * fraction) / Math.log1p(1000);
     const scaled = 255 * fraction, lower = Math.floor(scaled);
     const result = scale.rounding === "nearest_even" && scaled - lower === .5 ? lower + lower % 2 : Math.round(scaled);
     return scale.inverse ? 255 - result : result;
@@ -67,14 +69,24 @@
   const format = (value, scale) => {
     const step = (scale.hi - scale.lo) / 4;
     const magnitude = Math.max(Math.abs(scale.lo), Math.abs(scale.hi));
-    const precision = step > 0 ? Math.min(17, Math.max(7, Math.ceil(Math.log10(magnitude) - Math.log10(step)) + 2)) : 17;
+    // Keep close scientific endpoints distinguishable even when six digits
+    // would collapse them to the same label.
+    const precision = step > 0 ? Math.min(17, Math.max(6, Math.ceil(Math.log10(magnitude) - Math.log10(step)) + 2)) : 17;
     return Number(value.toPrecision(precision)).toString();
   };
-  function render(host, scale, axes, note) {
+  function measure(axes, includeNote = true, stacked = false) {
+    const height = stacked ? 128 : Math.max(128, Math.min(512, axes.height));
+    const axesWidth = axes.width + axes.margin.left + axes.margin.right;
+    const left = stacked ? Math.max(0, Math.min(axes.margin.left, axesWidth - 210)) : axes.margin.left + axes.width + 30;
+    const top = stacked ? axes.height + axes.margin.top + axes.margin.bottom + 12 : Math.max(0, axes.margin.top + (axes.height - height) / 2 - 24);
+    return { left, top, barHeight: height,
+      width: Math.max(axes.width + axes.margin.left + axes.margin.right, left + 210),
+      height: Math.max(axes.height + axes.margin.top + axes.margin.bottom, top + height + (includeNote ? 140 : 52)) };
+  }
+  function render(host, scale, axes, note, noteHost, stacked = false) {
     host.replaceChildren();
-    const height = Math.max(128, Math.min(512, axes.height));
-    const left = axes.margin.left + axes.width + 30;
-    const top = Math.max(0, axes.margin.top + (axes.height - height) / 2 - 24);
+    if (noteHost) noteHost.textContent = "";
+    const size = measure(axes, !noteHost, stacked), { left, top, barHeight: height } = size;
     host.style.left = `${left}px`; host.style.top = `${top}px`;
     const add = (tag, className, text) => {
       const node = document.createElement(tag); node.className = className;
@@ -98,10 +110,11 @@
         tick.textContent = format(fraction === 1 ? scale.hi : scale.lo + (scale.hi - scale.lo) * fraction, scale);
         body.append(tick);
       }
-      add("p", "colorbar-note", `${scale.stretch === "asinh" ? `Asinh (${scale.a}x)` : "Linear"}${scale.inverse ? "; inverted" : ""}. ${note}`);
+      const explanation = `${scale.stretch === "asinh" ? `Asinh (${scale.a}x)` : scale.stretch === "log" ? "Log (1000x)" : scale.stretch === "sqrt" ? "Sqrt" : "Linear"}${scale.inverse ? "; inverted" : ""}. ${note}`;
+      if (noteHost) noteHost.textContent = explanation;
+      else add("p", "colorbar-note", explanation);
     }
-    return { width: Math.max(axes.width + axes.margin.left + axes.margin.right, left + 210),
-      height: Math.max(axes.height + axes.margin.top + axes.margin.bottom, top + height + 140) };
+    return { width: size.width, height: size.height };
   }
-  window.SpherexColorBar = Object.freeze({ mapping, preview, epoch, gray, ramp, render });
+  window.SpherexColorBar = Object.freeze({ mapping, preview, epoch, gray, ramp, measure, render });
 })();

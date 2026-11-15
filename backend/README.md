@@ -40,7 +40,11 @@ Invoke-Item preview-inverse.png
 
 輸入為十進位度數，`0 <= ra < 360`、`-90 <= dec <= 90`、`0 < radius_deg <= 5/60`；必須為 JSON 數值，拒絕字串、布林值、NaN、Infinity 與多餘欄位。
 
-**搜尋半徑只控制 SIA2 搜尋。Cutout 沿用 Phase 1 已驗證的 3arcmin 完整邊長**，因此不保證輸出影像涵蓋整個搜尋圓。候選需通過 WCS 目標中心與有效像素檢查。影像維度由 IRSA 決定，不強制縮放為 29×29。
+**搜尋半徑只控制 SIA2 搜尋。** Preview 新增 `cutout_profile` enum：`small`＝3 arcmin（省略時的預設）、`medium`＝6.5 arcmin；拒絕其他值、任意尺寸及額外欄位。角度由後端固定白名單提供，URL 與 renderer 共用同值。Multi-epoch 維持 3 arcmin 與 29×29 輸出。
+
+Cutout 不保證涵蓋整個搜尋圓。候選沿用既有 WCS 目標中心與有效像素檢查；Medium 目標約 64×64，實際 shape 依 FITS/WCS 及裁切而定。metadata 新增 `cutout_profile`、`requested_cutout_arcmin`、`actual_shape_yx` 及 `wcs_field`；後者以完整 IMAGE WCS（含 SIP 等可用 distortion）在兩條像素格邊界中心線各取 17 點，回傳球面路徑長度（arcmin）、pixel／ICRS samples 和四角。這不是 RA 軸差值、天球 bounding box 或完整 coverage 保證；無法驗證時明示 `available=false`。
+
+Medium 僅完成本機離線整合，未部署；資源、瀏覽器驗收及仍未驗證項目見 [Preview Medium 報告](../docs/preview-medium-integration.md)。下載／像素／JSON／快取／Deadline 限制均未提高。
 
 成功回傳 `key`、`image_url`、`inverted_image_url`、`expires_in_seconds` 與 `metadata`。metadata 保留原始 SIA 列、MJD 時間、UTC 時間、detector、HDU headers、處理版本、Cutout URL、亮度 stretch、影像維度、FITS 大小、候選嘗試次數、耗時及查詢截斷資訊。
 
@@ -194,6 +198,12 @@ Remove-Item Env:SPHEREX_LIVE
 
 預設測試不連線 NASA：使用 Phase 1 的真實 VOTable/FITS 回放，實際執行共用解析、WCS、轉圖及 PNG 端點，再與 Phase 1 PNG 像素比對；另測輸入、錯誤、CORS、快取與併發限制。QR3 fallback 測試使用刻意建立的測試 VOTable。真實檔案不存在時回放會 skip。live 測試才真正呼叫 NASA，結果寫至 `backend/test-results/`。測試採用 [FastAPI TestClient](https://fastapi.tiangolo.com/tutorial/testing/)。
 
+## Render 部署準備（Phase 5.1）
+
+正式部署入口為 repository 根目錄執行 `python -m backend.start`，固定單一 worker、不啟用 reload，監聽 `0.0.0.0` 與環境變數 `PORT`。部署使用 `backend/requirements-render.txt`。
+
+完整設定、環境變數與 Render 免費方案風險見 [DEPLOYMENT.md](DEPLOYMENT.md)，離線驗證結果見 [phase5-1-report.md](phase5-1-report.md)。本輪未實際部署。
+
 ## 共用程式碼
 
-`research/spherex.py` 從成功的 `verify_spherex.py` 抽出 `fetch`、`query_images`、`build_cutout_url`、`render_cutout`；CLI 與後端皆呼叫同一份函式。保留原 SIA collection、查詢格式、3arcmin Cutout、HDU 檢查、百分位/asinh 與灰階反轉算法。後端不呼叫 CLI 的 `main()`，不覆寫 Phase 1 輸出或報告，也不使用可變全域座標／目錄處理請求。
+`research/spherex.py` 從成功的 `verify_spherex.py` 抽出 `fetch`、`query_images`、`build_cutout_url`、`render_cutout`；CLI 與後端皆呼叫同一份函式。保留原 SIA collection、查詢格式、3arcmin 預設、HDU 檢查、百分位/asinh 與灰階反轉算法；Preview service 僅傳遞受控尺寸及補充天區 metadata。後端不呼叫 CLI 的 `main()`，不覆寫 Phase 1 輸出或報告，也不使用可變全域座標／目錄處理請求。

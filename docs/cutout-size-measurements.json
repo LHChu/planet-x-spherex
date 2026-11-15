@@ -1,0 +1,93 @@
+{
+  "network": "denied by Python audit hook in each worker",
+  "samples_per_case": 1,
+  "epoch_frames": 2,
+  "measurements": [
+    {
+      "size": 29,
+      "mode": "preview",
+      "elapsed_seconds": 0.8039503999971203,
+      "traced_peak_bytes": 1719290,
+      "process_peak_rss_bytes": 89927680,
+      "baseline_peak_rss_bytes": 85463040,
+      "serialized_metadata_bytes": 41877,
+      "cache_bytes": 1082,
+      "fits_bytes": 28800
+    },
+    {
+      "size": 29,
+      "mode": "epochs",
+      "elapsed_seconds": 1.7070357999982662,
+      "traced_peak_bytes": 1423201,
+      "process_peak_rss_bytes": 93990912,
+      "baseline_peak_rss_bytes": 84840448,
+      "serialized_metadata_bytes": 53642,
+      "cache_bytes": 76004,
+      "fits_bytes": 28800
+    },
+    {
+      "size": 64,
+      "mode": "preview",
+      "elapsed_seconds": 0.5847100999963004,
+      "traced_peak_bytes": 2831017,
+      "process_peak_rss_bytes": 93241344,
+      "baseline_peak_rss_bytes": 85725184,
+      "serialized_metadata_bytes": 156761,
+      "cache_bytes": 1811,
+      "fits_bytes": 51840
+    },
+    {
+      "size": 64,
+      "mode": "epochs",
+      "elapsed_seconds": 4.016138999999384,
+      "traced_peak_bytes": 1993869,
+      "process_peak_rss_bytes": 95985664,
+      "baseline_peak_rss_bytes": 85733376,
+      "serialized_metadata_bytes": 220808,
+      "cache_bytes": 259255,
+      "fits_bytes": 51840
+    },
+    {
+      "size": 128,
+      "mode": "preview",
+      "elapsed_seconds": 1.6892864000037662,
+      "traced_peak_bytes": 7064493,
+      "process_peak_rss_bytes": 105189376,
+      "baseline_peak_rss_bytes": 87072768,
+      "serialized_metadata_bytes": 591021,
+      "cache_bytes": 3194,
+      "fits_bytes": 149760
+    },
+    {
+      "size": 128,
+      "mode": "epochs",
+      "elapsed_seconds": 6.608388199994806,
+      "traced_peak_bytes": 4520351,
+      "process_peak_rss_bytes": 102477824,
+      "baseline_peak_rss_bytes": 87179264,
+      "serialized_metadata_bytes": 853492,
+      "cache_bytes": 939510,
+      "fits_bytes": 149760
+    }
+  ],
+  "edge_checks": [
+    "native 64 accepted by unchanged epoch policy; output remains 29",
+    "preview (63, 65); epoch native >128 rejected when applicable",
+    "preview (65, 64); epoch native >128 rejected when applicable",
+    "64: nan",
+    "64: masked",
+    "64: flags_shape",
+    "64: unit",
+    "64: outside",
+    "native 128 accepted by unchanged epoch policy; output remains 29",
+    "preview (127, 129); epoch native >128 rejected when applicable",
+    "preview (129, 128); epoch native >128 rejected when applicable",
+    "128: nan",
+    "128: masked",
+    "128: flags_shape",
+    "128: unit",
+    "128: outside"
+  ],
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.12.14"
+}

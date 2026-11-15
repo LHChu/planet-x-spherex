@@ -1,0 +1,86 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.12.14",
+  "network": "External socket DNS/connect denied; Windows asyncio loopback allowed",
+  "samples": [
+    {
+      "profile": "small",
+      "shape_yx": [
+        29,
+        29
+      ],
+      "elapsed_seconds": 0.31622190000052797,
+      "process_peak_rss_bytes": 94130176,
+      "baseline_peak_rss_bytes": 90468352,
+      "traced_peak_bytes": 1930799,
+      "response_bytes": 37195,
+      "png_cache_bytes": 2507
+    },
+    {
+      "profile": "small",
+      "shape_yx": [
+        29,
+        29
+      ],
+      "elapsed_seconds": 0.43554199999925913,
+      "process_peak_rss_bytes": 94277632,
+      "baseline_peak_rss_bytes": 91480064,
+      "traced_peak_bytes": 1931333,
+      "response_bytes": 37196,
+      "png_cache_bytes": 2507
+    },
+    {
+      "profile": "small",
+      "shape_yx": [
+        29,
+        29
+      ],
+      "elapsed_seconds": 0.3807454999987385,
+      "process_peak_rss_bytes": 94576640,
+      "baseline_peak_rss_bytes": 90812416,
+      "traced_peak_bytes": 1930917,
+      "response_bytes": 37196,
+      "png_cache_bytes": 2507
+    },
+    {
+      "profile": "medium",
+      "shape_yx": [
+        65,
+        65
+      ],
+      "elapsed_seconds": 0.752033400000073,
+      "process_peak_rss_bytes": 97693696,
+      "baseline_peak_rss_bytes": 90910720,
+      "traced_peak_bytes": 3024830,
+      "response_bytes": 135392,
+      "png_cache_bytes": 11563
+    },
+    {
+      "profile": "medium",
+      "shape_yx": [
+        65,
+        65
+      ],
+      "elapsed_seconds": 0.4818236999999499,
+      "process_peak_rss_bytes": 96825344,
+      "baseline_peak_rss_bytes": 90894336,
+      "traced_peak_bytes": 3027000,
+      "response_bytes": 135393,
+      "png_cache_bytes": 11563
+    },
+    {
+      "profile": "medium",
+      "shape_yx": [
+        65,
+        65
+      ],
+      "elapsed_seconds": 0.49725329999637324,
+      "process_peak_rss_bytes": 97271808,
+      "baseline_peak_rss_bytes": 91656192,
+      "traced_peak_bytes": 3026558,
+      "response_bytes": 135392,
+      "png_cache_bytes": 11563
+    }
+  ],
+  "scope": "local sequential API, generated high-entropy float64 with SIP; includes fixture creation, JSON serialization, cache and PNG retrieval; tracemalloc enabled"
+}
